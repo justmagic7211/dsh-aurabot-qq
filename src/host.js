@@ -111,9 +111,10 @@ export function apply(ctx) {
     savePassword: (pw, auto = true) => setConfig({ ...cfg, snowluma: { ...cfg.snowluma, webuiPassword: pw, passwordAuto: auto } }),
   })
   const endpoint = () => {
+    if (cfg.gateway === 'qqbot') return { httpUrl: '', wsUrl: '', httpToken: '', wsToken: '' }
     const s = cfg.snowluma
-    // 接自己的 OneBot 或纯官方 QQBot 时只认填的地址；用 SnowLuma 时没填的从它的配置里读
-    const auto = cfg.gateway !== 'snowluma' || (s.httpUrl && s.wsUrl) ? null : snowluma.endpoint()
+    // 接自己的 OneBot 时只认填的地址；用 SnowLuma 时没填的从它的配置里读
+    const auto = cfg.gateway === 'onebot' || (s.httpUrl && s.wsUrl) ? null : snowluma.endpoint()
     return {
       httpUrl: s.httpUrl || auto?.httpUrl || '',
       wsUrl: s.wsUrl || auto?.wsUrl || '',
@@ -663,8 +664,8 @@ export function apply(ctx) {
       const r = await snowluma.start()
       log.info('SnowLuma：', r.message)
     }
-    // 纯官方 QQBot 模式且未额外填 OneBot 地址时，不启动原版 OneBot 重连循环
-    if (cfg.gateway === 'qqbot' && !cfg.snowluma.wsUrl && !cfg.snowluma.httpUrl) {
+    // 纯官方 QQBot 模式下停止原版 OneBot 重连循环（即使历史配置里残留了旧 wsUrl）
+    if (cfg.gateway === 'qqbot') {
       if (onebot.state !== 'stopped') onebot.stop()
       return
     }
@@ -801,7 +802,11 @@ export function apply(ctx) {
     const changedModel = before.model.provider !== cfg.model.provider || before.model.model !== cfg.model.model
     if (changedModel) { clearReasoningCache(); clearVisionCache() }
     if (changedConn || before.botQQ !== cfg.botQQ) wrongAccount = ''
-    if (changedConn && onebot.state !== 'stopped') onebot.restart()
+    if (cfg.gateway === 'qqbot') {
+      if (onebot.state !== 'stopped') onebot.stop()
+    } else if (changedConn && onebot.state !== 'stopped') {
+      onebot.restart()
+    }
     if (!before.enabled && cfg.enabled) setTimeout(safe(watchdog, '看门狗'), 100)
     if (before.enabled && !cfg.enabled) onebot.stop()
     log.info(`设置已保存｜总开关 ${cfg.enabled ? '开' : '关'}｜试运行 ${cfg.dryRun ? '开' : '关'}`)

@@ -5025,7 +5025,8 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
         true,
       ][step]
       const next = async () => {
-        if ((step === 0 || step === 1) && !(await save({ ...draft, enabled: true }))) return
+        const { ext: _omitExt, ...restDraft } = draft
+        if ((step === 0 || step === 1) && !(await save({ ...restDraft, enabled: true }))) return
         go(Math.min(step + 1, WIZ_STEPS.length - 1))
         reload()
       }
@@ -5103,10 +5104,11 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
           ] }),
           h('div', { className: 'ab-flex', style: { marginTop: 12 } },
             h(Btn, { small: true, onClick: async () => {
-              await save({ ...draft, enabled: true, dryRun: false })
+              const { ext: _omitExt, ...restDraft } = draft
+              await save({ ...restDraft, enabled: true, dryRun: false })
               const r = isQqbot ? await post('/qqbot/test-send', {}) : await post('/test-send')
               toast(r.message, r.ok === false ? 'err' : 'ok')
-              await save({ ...draft, enabled: true, dryRun: live === 'dry' })
+              await save({ ...restDraft, enabled: true, dryRun: live === 'dry' })
             } }, '给我发一条自测消息'))),
       ][step]
       return h('div', { className: 'ab-card', style: { padding: '20px 22px' } },
@@ -5122,7 +5124,8 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
           step < WIZ_STEPS.length - 1
             ? h(Btn, { kind: 'primary', disabled: !canNext, onClick: next }, '下一步')
             : h(Btn, { kind: 'primary', onClick: async () => {
-              if (!(await save({ ...draft, enabled: true, dryRun: live === 'dry' }))) return
+              const { ext: _omitExt, ...restDraft } = draft
+              if (!(await save({ ...restDraft, enabled: true, dryRun: live === 'dry' }))) return
               const r = await post('/setup/done'); toast(r.message, r.ok ? 'ok' : 'err')
               if (r.ok) { try { localStorage.removeItem('aurabot.wiz') } catch (e) {} reload(); onClose && onClose() }
             } }, '完成，让大肥鱼上线')))
@@ -5166,7 +5169,11 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
         if (!r || r.ok === false) { setErr(r && r.message ? r.message : '读不到插件状态'); return }
         setErr('')
         setSt(r)
-        if (!dirtyRef.current) setDraft(clone(r.config))
+        if (!dirtyRef.current) {
+          setDraft(clone(r.config))
+        } else if (r.config && r.config.ext && r.config.ext.qqbot) {
+          setDraft((prev) => prev ? { ...prev, ext: { ...(prev.ext || {}), qqbot: clone(r.config.ext.qqbot) } } : clone(r.config))
+        }
       }, [])
       useEffect(() => { reload(); const t = setInterval(reload, 5000); return () => clearInterval(t) }, [reload])
       const go = (id) => { setTab(id); try { localStorage.setItem('aurabot.tab', id) } catch (e) {} }
