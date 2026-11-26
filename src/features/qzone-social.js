@@ -194,6 +194,7 @@ export function createQzoneSocial({ getConfig, onebot, hub, log, memory }) {
     const cfg = getConfig()
     const c = cfg.qzoneSocial
     if (!cfg.enabled || !c.enabled) return
+    if (onebot.state && onebot.state !== 'connected') return
     const h = new Date().getHours()
     if (h < cfg.speakUp.awakeFrom || h >= cfg.speakUp.awakeTo) return
     if (Date.now() - load().lastRun < c.intervalMin * 60_000) return

@@ -730,7 +730,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
     const navGroupOf = (t) => NAV_GROUPS.find((g) => g.tabs.includes(t.id)) || (t.ext && PLATFORM_EXT.test(t.label) ? NAV_GROUPS[3] : NAV_GROUPS[4])
     const navOrder = (g, t) => { const i = g.tabs.indexOf(t.id); return i >= 0 ? i : g.tabs.length - (g.tabs.includes('logs') ? 1.5 : 0) }
     const NAV_ALIAS = {
-      overview: '首页 状态', connect: 'qq 网关 snowluma onebot qqbot 官方 开放平台 登录 工作区', character: '人设 性格 设定 头像', persona: '人物 画像 小档案 群印象 梗概 时间轴 相处经验 说话方式', access: '主人 白名单 权限 群管 改资料',
+      overview: '首页 状态', connect: 'qq 网关 snowluma onebot qqbot 官方 开放平台 telegram tg 电报 登录 工作区', character: '人设 性格 设定 头像', persona: '人物 画像 小档案 群印象 梗概 时间轴 相处经验 说话方式', access: '主人 白名单 权限 群管 改资料',
       group: '群聊 插话 合并', model: 'ai 大模型 视觉 思考强度', voice: '语音 tts 说话 音色 edge', stickers: '表情 小黄脸 gif 商城表情',
       imagegen: '画图 图片', diary: '空间 说说 日记', speakup: '搭话 主动', mood: '心情 记忆', song: '唱歌 翻唱 rvc 点歌',
       bili: 'b站 bilibili 视频', douyin: '抖音 短视频 私信', pet: '桌宠 宠物 悬浮窗 气泡 electron', local: '本地 接口 sd sovits', security: '安全 防护 ssrf 内网 图片 下载', modules: '扩展 自己写 模板 安全模式', market: '模块 市场 插件 社区 下载 安装 桌宠 抖音 小黑盒 群管', logs: '日志 报错', about: '关于 关于我们 版本 许可 鸣谢 开源', backup: '备份 恢复 换电脑 迁移 导入 导出',
@@ -851,7 +851,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
         h(UpdateNotes, { st, toast }),
         !cfg.enabled ? h('div', { className: 'ab-note warn' }, '总开关是关着的：大肥鱼现在不会收也不会发任何 QQ 消息。准备好了就在右上角打开。') : null,
         cfg.enabled && cfg.dryRun ? h('div', { className: 'ab-note' }, '现在是试运行：ta会照常思考回复，但只写进日志，不会真的发到 QQ。确认没问题后在右上角关掉「试运行」。') : null,
-        cfg.enabled && !conn && !(st.qqbot && st.qqbot.state === 'connected') ? h('div', { className: 'ab-note err' }, '还没连上 QQ 网关' + (st.onebot.problem ? '：' + st.onebot.problem + '。' : '。去「连接」标签看看 SnowLuma 有没有装好、启动没有。') + ' ', h('a', { href: '#', onClick: (e) => { e.preventDefault(); go('connect') } }, '去连接 →')) : null,
+        cfg.enabled && !conn && !(st.qqbot && st.qqbot.state === 'connected') && !(st.telegram && st.telegram.state === 'connected') ? h('div', { className: 'ab-note err' }, '还没连上聊天网关' + (st.onebot.problem ? '：' + st.onebot.problem + '。' : '。去「连接」标签看看网关配置。') + ' ', h('a', { href: '#', onClick: (e) => { e.preventDefault(); go('connect') } }, '去连接 →')) : null,
         h('div', { className: 'ab-grid ab-g4' },
           [['今天收到', s.received, '📥'], ['今天发出', s.sent, '📤'], ['语音条', s.voice, '🎙️'], ['表情包', s.stickers, '😺']].map(([l, n, ic]) => h('div', { key: l, className: 'ab-card ab-stat' }, h('span', { className: 'ic', 'aria-hidden': true }, ic), h('div', { className: 'n' }, n || 0), h('div', { className: 'l' }, l))),
         ),
@@ -1023,12 +1023,13 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
           h('span', { className: 'ab-muted ab-small' }, 'SnowLuma 是独立的第三方项目，仅限个人非商业使用；使用非官方 QQ 工具有账号风险，请用小号。')))
     }
 
-    /** 用什么接 QQ：插件帮你管 SnowLuma、接已有的 OneBot v11，或直接连腾讯官方 QQBot。 */
+    /** 用什么接 QQ / 聊天平台：插件帮你管 SnowLuma、接已有的 OneBot v11、连腾讯官方 QQBot 或 Telegram。 */
     function GatewayChoice({ draft, setDraft }) {
       return h(Choices, { value: draft.gateway || 'snowluma', onChange: (v) => setDraft(setPath(draft, 'gateway', v)), options: [
         { value: 'snowluma', label: '用 SnowLuma（Windows）', desc: '插件帮你启动、接入机器人号、断线重连' },
         { value: 'onebot', label: '接我已有的 OneBot 机器人', desc: 'NapCat、LLOneBot、Lagrange、Docker 里的 SnowLuma 等任何 OneBot v11 实现' },
         { value: 'qqbot', label: '用腾讯官方 QQBot（免网关，Mac / Win / Linux 通用）', desc: 'QQ 开放平台官方机器人：手机 QQ 扫码绑定或填 AppID/AppSecret，免装 SnowLuma / NapCat' },
+        { value: 'telegram', label: '用 Telegram 机器人（@BotFather 直连）', desc: '填 Bot Token 即走长轮询收发私聊与群聊，免公网 IP，也可与 QQ 同时在线' },
       ] })
     }
 
@@ -1199,6 +1200,127 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
       )
     }
 
+    /** Telegram Bot API 连接配置卡片。 */
+    function TelegramCard({ toast, reload }) {
+      const [status, setStatus] = useState(null)
+      const [loaded, setLoaded] = useState(false)
+      const [form, setForm] = useState({
+        enabled: false,
+        token: '',
+        apiBase: 'https://api.telegram.org',
+        ownerId: '',
+        requireMentionInGroup: false,
+        nonMentionReplyMode: 'always',
+      })
+      const inited = useRef(false)
+
+      const syncFormFrom = (s) => {
+        if (!s) return
+        setForm({
+          enabled: !!s.enabled,
+          token: '',
+          apiBase: s.apiBase || 'https://api.telegram.org',
+          ownerId: s.ownerId || '',
+          requireMentionInGroup: !!s.requireMentionInGroup,
+          nonMentionReplyMode: s.nonMentionReplyMode === 'aurabot' ? 'aurabot' : 'always',
+        })
+      }
+
+      const loadStatus = useCallback(async (forceSyncForm = false) => {
+        const r = await get('/telegram/status')
+        setStatus(r)
+        setLoaded(true)
+        if (r && r.ok && r.settings && (!inited.current || forceSyncForm)) {
+          inited.current = true
+          syncFormFrom(r.settings)
+        }
+        return r
+      }, [])
+
+      useEffect(() => {
+        let alive = true
+        const tick = () => { if (alive) loadStatus(false) }
+        tick()
+        const timer = setInterval(tick, 3000)
+        return () => { alive = false; clearInterval(timer) }
+      }, [loadStatus])
+
+      const title = 'Telegram 机器人（Bot API）'
+      const desc = '免公网 IP 长轮询直连 Telegram，支持语音 ASR/TTS、贴纸/GIF 表情包、图片、视频、文件、引用回复与群管；可单独用，也可与 QQ / 官方 QQBot 同时在线共享主人记忆。'
+
+      if (!loaded) {
+        return h(Card, { title, desc }, h('div', { className: 'ab-muted ab-small' }, '正在读取 Telegram 状态…'))
+      }
+      if (!status || !status.ok) {
+        return h(Card, { title, desc }, h('div', { className: 'ab-note warn' }, 'Telegram 模块没加载（去「模块」页看看是否被关掉）'))
+      }
+
+      const stateText = { connected: '在线', connecting: '连接中', stopped: '没连接' }[status.state] || status.state
+      const dotCls = status.state === 'connected' ? 'ok' : status.state === 'connecting' ? 'warn' : 'err'
+      const tokenSet = Boolean(status.settings && status.settings.tokenSet)
+
+      const runAct = (fn, syncAfter = false) => async () => {
+        const r = await fn()
+        toast((r && r.message) || (r && r.ok ? '操作成功' : '没成功'), r && r.ok === false ? 'err' : 'ok')
+        await loadStatus(syncAfter)
+        reload && reload()
+      }
+
+      return h(Card, { title, desc },
+        h('div', { className: 'ab-kv', style: { marginBottom: 10 } },
+          h('span', null, '运行状态'),
+          h('span', null, h('span', { className: 'ab-flex' },
+            h('i', { className: cx('ab-dot', dotCls) }),
+            stateText + (status.bot ? ' · @' + (status.bot.username || status.bot.id) : ''),
+          )),
+          h('span', null, '收发统计'),
+          h('span', null, '收到 ' + ((status.counters && status.counters.inbound) || 0) + ' 条 · 发出 ' + ((status.counters && status.counters.outbound) || 0) + ' 条 · 错误 ' + ((status.counters && status.counters.errors) || 0) + ' 次'),
+        ),
+        status.lastError ? h('div', { className: 'ab-note err', style: { marginBottom: 10 } }, '最近错误：' + status.lastError) : null,
+
+        h(Row, { label: '启用 Telegram', hint: '开启后自动建立 Telegram 长轮询连接（同时需打开右上角总开关）' },
+          h(Switch, { on: !!form.enabled, onChange: (v) => setForm({ ...form, enabled: v }) })),
+        h(Row, { label: 'Bot Token', hint: '从 @BotFather 获取；留空不会覆盖已保存的 Token（也支持环境变量 TELEGRAM_BOT_TOKEN）' },
+          h('input', { className: 'ab-input wide', type: 'password', value: form.token, placeholder: tokenSet ? '已保存，不改就留空' : '例如 123456789:AAH...', onChange: (e) => setForm({ ...form, token: e.target.value }) })),
+        h(Row, { label: '主人 Telegram ID', hint: '你的 Telegram 纯数字用户 ID（可给 @userinfobot 发消息查看），匹配此 ID 拥有主人权限并与 QQ 主人共享记忆' },
+          h('input', { className: 'ab-input', value: form.ownerId, placeholder: '例如 123456789', onChange: (e) => setForm({ ...form, ownerId: e.target.value }) })),
+        h(Row, { label: 'Bot API 地址', hint: '默认官方 https://api.telegram.org；支持填自定义反代地址' },
+          h('input', { className: 'ab-input wide', value: form.apiBase, placeholder: 'https://api.telegram.org', onChange: (e) => setForm({ ...form, apiBase: e.target.value }) })),
+        h(Row, { label: '群聊必须 @ 才回', hint: '关掉后可响应不带 @ 的普通群消息' },
+          h(Switch, { on: !!form.requireMentionInGroup, onChange: (v) => setForm({ ...form, requireMentionInGroup: v }) })),
+        h(Row, { label: '免 @ 回复策略' },
+          h(Select, {
+            value: form.nonMentionReplyMode,
+            width: 300,
+            onChange: (v) => setForm({ ...form, nonMentionReplyMode: v }),
+            options: [
+              { value: 'always', label: '每条普通消息都直接回（不用 @ 也不用叫名字）' },
+              { value: 'aurabot', label: '按大肥鱼群聊策略（叫名字必回，其余按概率插话）' },
+            ],
+          })),
+
+        h('div', { className: 'ab-flex', style: { marginTop: 10, gap: 8, flexWrap: 'wrap' } },
+          h(Btn, { kind: 'primary', small: true, onClick: async () => {
+            const r = await post('/telegram/save', form)
+            toast((r && r.message) || (r && r.ok ? '已保存' : '保存失败'), r && r.ok === false ? 'err' : 'ok')
+            if (r && r.ok) setForm((prev) => ({ ...prev, token: '' }))
+            await loadStatus(false)
+            reload && reload()
+          } }, '保存'),
+          status.tokenConfigured
+            ? h(Btn, { small: true, onClick: runAct(() => post('/telegram/reconnect'), true) }, '重新连接')
+            : null,
+          status.tokenConfigured
+            ? h(Btn, { small: true, kind: 'danger', onClick: runAct(() => post('/telegram/unbind'), true) }, '解绑')
+            : null,
+          h(Btn, { small: true, onClick: runAct(() => post('/telegram/test-send', {}), false) }, '发测试消息给主人'),
+        ),
+
+        h('div', { className: 'ab-muted ab-small', style: { marginTop: 10 } },
+          '提示：Telegram 群里不 @ 也要回，需把机器人设为群管理员，或在 @BotFather 发送 /setprivacy 选 Disable（否则 TG 官方默认只推 / 命令与 @ 消息）。'),
+      )
+    }
+
     function Connect({ st, draft, setDraft, toast, reload, openWizard }) {
       const f = useField(draft, setDraft)
       const sl = st.snowluma
@@ -1212,12 +1334,13 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
       const login = st.onebot.login
       const external = draft.gateway === 'onebot'
       const isQqbot = draft.gateway === 'qqbot'
+      const isTg = draft.gateway === 'telegram'
       const testBtns = h('div', { className: 'ab-flex', style: { marginTop: 8 } },
         h(Btn, { small: true, onClick: async () => { const r = await get('/onebot/test'); toast(r.message) } }, '测试连接'),
         h(Btn, { small: true, onClick: async () => { const r = await post('/onebot/reconnect'); toast(r.message, r.ok ? 'ok' : 'err'); reload() } }, '重新连接'))
       return h('div', { className: 'ab-grid' },
-        h(Card, { title: '用什么接 QQ', right: openWizard ? h(Btn, { small: true, kind: 'ghost', onClick: openWizard }, '重新走一遍设置向导') : null }, h(GatewayChoice, { draft, setDraft })),
-        isQqbot ? null : external ? h(Card, { title: '接上 QQ（已有的 OneBot 机器人）', desc: '让你的 OneBot 服务登录机器人号 ' + (draft.botQQ || '') + '，把它的正向 WebSocket 地址填在这里，保存后插件就会去连。插件只连接，不会启动或注入任何东西；连上后会先核对登录的是不是机器人号，不是就断开。' },
+        h(Card, { title: '用什么接 QQ / 聊天平台', right: openWizard ? h(Btn, { small: true, kind: 'ghost', onClick: openWizard }, '重新走一遍设置向导') : null }, h(GatewayChoice, { draft, setDraft })),
+        isQqbot || isTg ? null : external ? h(Card, { title: '接上 QQ（已有的 OneBot 机器人）', desc: '让你的 OneBot 服务登录机器人号 ' + (draft.botQQ || '') + '，把它的正向 WebSocket 地址填在这里，保存后插件就会去连。插件只连接，不会启动或注入任何东西；连上后会先核对登录的是不是机器人号，不是就断开。' },
           h(OneBotFields, { draft, f }),
           h(Row, { label: '机器人 QQ 号' }, f.text('botQQ')),
           testBtns) :
@@ -1255,7 +1378,8 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
                 h('td', null, p.injected ? (p.connected ? '已接入' : '已注入，连接中') : '未接入'),
                 h('td', null, p.isBot ? h('span', { className: 'ab-badge' }, '机器人号') : h('span', { className: 'ab-muted ab-small' }, '不会碰'))))))) : null,
         ),
-        h(QQBotCard, { toast, reload }),
+        isTg ? h(TelegramCard, { toast, reload }) : h(QQBotCard, { toast, reload }),
+        isTg ? h(QQBotCard, { toast, reload }) : h(TelegramCard, { toast, reload }),
         h(Card, { title: 'QQ 会话放在哪', desc: '每个 QQ 私聊 / 群都是 DSH 里「Aurabot · QQ」工作区下的一个会话，ta在会话里读写文件也在这个文件夹。改了以后新开的会话放到新位置；已有的会话还在原来的地方，想全部挪过去就在「概览」点「重新开始所有 QQ 会话」。' },
           h(Row, { label: '工作区文件夹', hint: '填完整路径（比如 D:\\Aurabot\\qq-chats）；留空 = 默认位置' }, f.text('workspaceDir', { size: 'wide', placeholder: st.workspaceDir || '' })),
           h('div', { className: 'ab-muted ab-small' }, '现在用的：' + (st.workspaceDir || '—') + (st.workspaceReal && st.workspaceReal !== st.workspaceDir ? '（文件实际在 ' + st.workspaceReal + '）' : '')),
@@ -1274,6 +1398,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
             h('span', null, 'HTTP'), h('span', null, st.onebot.endpoint.httpUrl || '—'),
             h('span', null, 'WebSocket'), h('span', null, st.onebot.endpoint.wsUrl || '—'),
             h('span', null, '官方 QQBot'), h('span', null, st.qqbot ? ({ connected: '在线', connecting: '连接中', stopped: st.qqbot.enabled ? '没连接' : '未启用' }[st.qqbot.state] || st.qqbot.state) + (st.qqbot.appId ? '（' + st.qqbot.appId + '）' : '') : '—'),
+            h('span', null, 'Telegram'), h('span', null, st.telegram ? ({ connected: '在线', connecting: '连接中', stopped: st.telegram.enabled ? '没连接' : '未启用' }[st.telegram.state] || st.telegram.state) + (st.telegram.username ? '（@' + st.telegram.username + '）' : '') : '—'),
           ),
           !conn && st.onebot.problem ? h('div', { className: 'ab-note warn', style: { marginTop: 10 } }, st.onebot.problem) : null,
           h('div', { className: 'ab-flex', style: { marginTop: 10 } }, h(Btn, { small: true, onClick: async () => { const r = await post('/onebot/reconnect'); toast(r.message, r.ok ? 'ok' : 'err'); reload() } }, '重新连接')),
@@ -1306,7 +1431,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
                   if (r.ok) { setPubBase(null); reload() }
                 } }, '关闭远端直连') : null)))
         })(),
-        external || isQqbot ? null : h(Card, { title: '高级', desc: '一般不用动：地址和令牌会自动从 SnowLuma 的配置里读。' },
+        external || isQqbot || isTg ? null : h(Card, { title: '高级', desc: '一般不用动：地址和令牌会自动从 SnowLuma 的配置里读。' },
           h(Row, { label: '机器人 QQ 号' }, f.text('botQQ')),
           h(Row, { label: '控制台端口' }, f.num('snowluma.webuiPort', { min: 1, max: 65535 })),
           h(Row, { label: '控制台密码', hint: '默认由插件自动生成，上面「显示密码」能看到。想自己定一个就填在这里，保存后会真的改到 SnowLuma 上（至少 10 位，要有大小写字母和符号，不能有空格）' }, f.text('snowluma.webuiPassword', { type: 'password', placeholder: draft.snowluma.webuiPasswordSet ? (draft.snowluma.passwordAuto ? '自动管理中（不改就留空）' : '已保存（不改就留空）') : '留空 = 自动' })),
@@ -5012,15 +5137,17 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
       const [live, setLive] = useState('dry')
       const external = draft.gateway === 'onebot'
       const isQqbot = draft.gateway === 'qqbot'
+      const isTg = draft.gateway === 'telegram'
       const ownerOk = /^\d{5,11}$/.test(draft.ownerQQ || '')
       const botOk = /^\d{5,11}$/.test(draft.botQQ || '') && draft.botQQ !== draft.ownerQQ
-      const qqOk = isQqbot ? (ownerOk && (!draft.botQQ || botOk)) : (botOk && ownerOk)
+      const qqOk = isTg ? ((!draft.ownerQQ || ownerOk) && (!draft.botQQ || botOk)) : isQqbot ? (ownerOk && (!draft.botQQ || botOk)) : (botOk && ownerOk)
       const qqbotReady = Boolean(st.qqbot && st.qqbot.state === 'connected')
-      const verified = isQqbot ? qqbotReady : (conn && login && String(login.uin) === String(st.config.botQQ) && !st.onebot.problem)
+      const tgReady = Boolean(st.telegram && st.telegram.state === 'connected')
+      const verified = isTg ? tgReady : isQqbot ? qqbotReady : (conn && login && String(login.uin) === String(st.config.botQQ) && !st.onebot.problem)
       const canNext = [
         qqOk,
-        isQqbot ? Boolean(st.qqbot && (st.qqbot.appId || st.qqbot.state === 'connected')) : external ? Boolean(draft.snowluma.wsUrl || st.config.snowluma.wsUrl) : sl.installed,
-        isQqbot || external || (sl.running && sl.consented),
+        isTg ? Boolean(st.telegram && (st.telegram.hasToken || st.telegram.state === 'connected')) : isQqbot ? Boolean(st.qqbot && (st.qqbot.appId || st.qqbot.state === 'connected')) : external ? Boolean(draft.snowluma.wsUrl || st.config.snowluma.wsUrl) : sl.installed,
+        isTg || isQqbot || external || (sl.running && sl.consented),
         verified,
         true,
       ][step]
@@ -5038,16 +5165,19 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
       const body = [
         // 0. 接入方式与 QQ 号
         h('div', null,
-          h('p', { className: 'ab-desc' }, '先选一下用什么方式接 QQ，再填你的主人 QQ 号。'),
+          h('p', { className: 'ab-desc' }, '先选一下用什么方式接入，再填你的主人账号。'),
           h('div', { style: { marginBottom: 12 } }, h(GatewayChoice, { draft, setDraft })),
-          isQqbot
-            ? h(Row, { label: '机器人 QQ 号（选填）', hint: '用官方 QQBot 时可留空（会自动用机器人的 AppID 作为标识）' }, f.text('botQQ', { placeholder: '留空自动生成' }))
+          isQqbot || isTg
+            ? h(Row, { label: '机器人 QQ 号（选填）', hint: isTg ? '只用 Telegram 可留空（会自动用 TG Bot ID 作为标识）' : '用官方 QQBot 时可留空（会自动用机器人的 AppID 作为标识）' }, f.text('botQQ', { placeholder: '留空自动生成' }))
             : h(Row, { label: '机器人 QQ 号', hint: '强烈建议用小号：非官方 QQ 工具有被限制的风险' }, f.text('botQQ', { placeholder: '例如 123456789' })),
-          h(Row, { label: '你的 QQ 号（主人）', hint: '群管、操作电脑这些只听主人的' }, f.text('ownerQQ', { placeholder: '你的大号' })),
+          h(Row, { label: isTg ? '你的 QQ 号或 TG 数字 ID' : '你的 QQ 号（主人）', hint: isTg ? '可填你的 QQ 号或 Telegram 数字用户 ID（也可留空，下一步在 TG 卡片里填）' : '群管、操作电脑这些只听主人的' }, f.text('ownerQQ', { placeholder: isTg ? '你的 QQ 号或 TG 数字 ID' : '你的大号' })),
           h(Row, { label: 'ta怎么称呼你' }, f.text('ownerName', { placeholder: '主人' })),
-          h(Row, { label: '工作区文件夹', hint: 'ta在 QQ 会话里读写文件的地方，C 盘空间紧就放到别的盘，比如 D:\\Aurabot\\qq-chats。填完整路径，留空用默认位置。以后想换，在「连接」页能搬。聊天记录和记忆在用户目录的 .dsh 里，不在这个文件夹' }, f.text('workspaceDir', { size: 'wide', placeholder: st.workspaceDir || '' })),
+          h(Row, { label: '工作区文件夹', hint: 'ta在聊天会话里读写文件的地方，C 盘空间紧就放到别的盘，比如 D:\\Aurabot\\qq-chats。填完整路径，留空用默认位置。以后想换，在「连接」页能搬。聊天记录和记忆在用户目录的 .dsh 里，不在这个文件夹' }, f.text('workspaceDir', { size: 'wide', placeholder: st.workspaceDir || '' })),
           draft.botQQ && draft.ownerQQ && draft.botQQ === draft.ownerQQ ? h('div', { className: 'ab-note err' }, '机器人号和主人号不能是同一个。') : null),
-        // 1. 官方 QQBot / 已有的 OneBot / SnowLuma
+        // 1. Telegram / 官方 QQBot / 已有的 OneBot / SnowLuma
+        isTg ? h('div', null,
+          h(GatewayChoice, { draft, setDraft }),
+          h('div', { style: { marginTop: 12 } }, h(TelegramCard, { toast, reload }))) :
         isQqbot ? h('div', null,
           h(GatewayChoice, { draft, setDraft }),
           h('div', { style: { marginTop: 12 } }, h(QQBotCard, { toast, reload }))) :
@@ -5064,7 +5194,8 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
             h('div', { className: cx('ab-step', sl.installed && 'done') }, h('div', null, h('b', null, '解压到纯英文目录'), h('div', { className: 'ab-muted ab-small' }, '推荐 C:\\Aurabot\\snowluma，解压后目录里能直接看到 index.mjs。'),
               h('div', { className: 'ab-flex', style: { marginTop: 6 } }, f.text('snowluma.dir', { size: 'wide', placeholder: 'C:\\Aurabot\\snowluma' }), h(Btn, { small: true, onClick: async () => { await save(draft); reload() } }, '检查')),
               h('div', { className: 'ab-small', style: { marginTop: 4, color: sl.installed ? 'var(--ab-ok)' : 'var(--ab-warn)' } }, sl.installed ? '✓ 找到了 SnowLuma v' + sl.version : sl.reason))))),
-        // 2. 启动 + 协议（官方 QQBot 或接自己的 OneBot 时不用）
+        // 2. 启动 + 协议（Telegram / 官方 QQBot / 接自己的 OneBot 时不用）
+        isTg ? h('div', null, h('p', { className: 'ab-desc' }, '用的是 Telegram Bot API 长轮询直连，无需安装或启动第三方网关，直接下一步。')) :
         isQqbot ? h('div', null, h('p', { className: 'ab-desc' }, '用的是腾讯官方 QQBot（QQ 开放平台 WebSocket 直连），无需安装或启动第三方网关，直接下一步。')) :
         external ? h('div', null, h('p', { className: 'ab-desc' }, '用的是你自己的 OneBot 服务，这一步不用做，直接下一步。')) :
         h('div', null,
@@ -5074,6 +5205,14 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
             h(SnowLumaAuth, { running: sl.running, toast, onChange: reload })),
           h(Agreement, { running: sl.running, toast, onChange: reload })),
         // 3. 接入
+        isTg ? h('div', null,
+          h('p', { className: 'ab-desc' }, '确认 Telegram 机器人已连接成功（若刚才只填了 Token 还没开启连接，点下面「连接 Telegram」）。'),
+          h('div', { className: 'ab-flex' },
+            h(Btn, { kind: 'primary', small: true, onClick: async () => { const r = await post('/telegram/reconnect'); toast(r.message, r.ok ? 'ok' : 'err'); setTimeout(reload, 1000) } }, '连接 Telegram'),
+            h(Btn, { small: true, onClick: () => reload() }, '刷新状态')),
+          tgReady
+            ? h('div', { className: 'ab-note', style: { marginTop: 10 } }, '✓ Telegram 机器人已连上' + (st.telegram.username ? '（@' + st.telegram.username + '）' : '') + '，可以下一步啦！')
+            : h('div', { className: 'ab-muted ab-small', style: { marginTop: 10 } }, '当前状态：' + ((st.telegram && st.telegram.state) || '未连接') + '。如果还没填 Token，点「上一步」填写并保存。')) :
         isQqbot ? h('div', null,
           h('p', { className: 'ab-desc' }, '确认官方 QQBot 已连接腾讯开放平台网关（若刚才只填了 AppID / AppSecret 还没开，点下面「连接官方 QQBot」）。'),
           h('div', { className: 'ab-flex' },
@@ -5106,7 +5245,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
             h(Btn, { small: true, onClick: async () => {
               const { ext: _omitExt, ...restDraft } = draft
               await save({ ...restDraft, enabled: true, dryRun: false })
-              const r = isQqbot ? await post('/qqbot/test-send', {}) : await post('/test-send')
+              const r = isTg ? await post('/telegram/test-send', {}) : isQqbot ? await post('/qqbot/test-send', {}) : await post('/test-send')
               toast(r.message, r.ok === false ? 'err' : 'ok')
               await save({ ...restDraft, enabled: true, dryRun: live === 'dry' })
             } }, '给我发一条自测消息'))),
@@ -5171,8 +5310,15 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
         setSt(r)
         if (!dirtyRef.current) {
           setDraft(clone(r.config))
-        } else if (r.config && r.config.ext && r.config.ext.qqbot) {
-          setDraft((prev) => prev ? { ...prev, ext: { ...(prev.ext || {}), qqbot: clone(r.config.ext.qqbot) } } : clone(r.config))
+        } else if (r.config && r.config.ext) {
+          setDraft((prev) => prev ? {
+            ...prev,
+            ext: {
+              ...(prev.ext || {}),
+              ...(r.config.ext.qqbot ? { qqbot: clone(r.config.ext.qqbot) } : {}),
+              ...(r.config.ext.telegram ? { telegram: clone(r.config.ext.telegram) } : {}),
+            },
+          } : clone(r.config))
         }
       }, [])
       useEffect(() => { reload(); const t = setInterval(reload, 5000); return () => clearInterval(t) }, [reload])
@@ -5223,8 +5369,9 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
       const cfg = st.config
       const conn = st.onebot.state === 'connected'
       const qqbotConn = Boolean(st.qqbot && st.qqbot.state === 'connected')
-      const anyConn = conn || qqbotConn
-      const status = !cfg.enabled ? { cls: '', text: '休息中（总开关关着）' } : !anyConn ? { cls: 'err', text: 'QQ 没连上' } : cfg.dryRun ? { cls: 'warn', text: '在线 · 试运行' } : { cls: 'ok', text: '在线' }
+      const tgConn = Boolean(st.telegram && st.telegram.state === 'connected')
+      const anyConn = conn || qqbotConn || tgConn
+      const status = !cfg.enabled ? { cls: '', text: '休息中（总开关关着）' } : !anyConn ? { cls: 'err', text: '没连上' } : cfg.dryRun ? { cls: 'warn', text: '在线 · 试运行' } : { cls: 'ok', text: '在线' }
       const persona = st.personas.find((p) => p.id === cfg.persona.current)
       const props = { st, draft, setDraft: setD, toast, reload, go, openWizard: () => setWizardOpen(true) }
       const showWizard = !cfg.setupDone || wizardOpen
@@ -5262,7 +5409,13 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
                 h('span', { className: 'ab-pill' }, h('i', { className: cx('ab-dot', status.cls) }), status.text),
                 cfg.gateway === 'qqbot' || (st.qqbot && st.qqbot.enabled)
                   ? h('span', { className: 'ab-pill' }, '官方 QQBot ' + ({ connected: '运行中', connecting: '连接中', stopped: '没连上' }[st.qqbot && st.qqbot.state] || '未启用'))
-                  : h('span', { className: 'ab-pill' }, 'SnowLuma ' + (st.snowluma.installed ? (st.snowluma.running ? '运行中' : '没启动') : '未安装')),
+                  : null,
+                cfg.gateway === 'telegram' || (st.telegram && st.telegram.enabled)
+                  ? h('span', { className: 'ab-pill' }, 'Telegram ' + ({ connected: '运行中', connecting: '连接中', stopped: '没连上' }[st.telegram && st.telegram.state] || '未启用'))
+                  : null,
+                cfg.gateway !== 'qqbot' && cfg.gateway !== 'telegram'
+                  ? h('span', { className: 'ab-pill' }, 'SnowLuma ' + (st.snowluma.installed ? (st.snowluma.running ? '运行中' : '没启动') : '未安装'))
+                  : null,
                 h('span', { className: 'ab-pill' }, 'Aurabot v' + st.version))),
             h('div', { className: 'ab-hero-side' },
               h('div', { className: 'ab-switch-row' }, h('span', null, '总开关'), h(Switch, { on: cfg.enabled, onChange: (v) => quickToggle('enabled', v) })),

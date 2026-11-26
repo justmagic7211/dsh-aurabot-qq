@@ -17,5 +17,6 @@ import profile from './profile/index.js'
 import contacts from './contacts/index.js'
 import video from './video/index.js'
 import qqbot from './qqbot/index.js'
+import telegram from './telegram/index.js'
 
-export const BUILTINS = [stickers, voice, mood, memory, qqTools, qqApi, imagegen, diary, qzoneSocial, speakup, purpose, bili, song, profile, contacts, video, qqbot]
+export const BUILTINS = [stickers, voice, mood, memory, qqTools, qqApi, imagegen, diary, qzoneSocial, speakup, purpose, bili, song, profile, contacts, video, qqbot, telegram]

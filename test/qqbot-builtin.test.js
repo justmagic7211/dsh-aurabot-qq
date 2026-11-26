@@ -11,6 +11,7 @@ import { parseImQqbotFromPatchYaml } from '../src/modules/qqbot/sdk-loader.js'
 import { LiteQQBot, createPassiveReplyTracker } from '../src/modules/qqbot/lite.js'
 import { BindStatus, decryptBindSecret, encodeQrMatrix, renderLiteQrSvgDataUrl, startLiteQrConnect } from '../src/modules/qqbot/qr.js'
 import qqbotModule from '../src/modules/qqbot/index.js'
+import telegramModule from '../src/modules/telegram/index.js'
 
 test('parseImQqbotFromPatchYaml: 解析 @tencent-connect/dsh-qqbot 的 cordis.patch.yml 凭据与白名单', () => {
   const yaml = `
@@ -423,5 +424,196 @@ test('零依赖内置扫码绑定协议与 SVG 二维码编码：过期自动刷
   assert.equal(creds[0].appSecret, 'REAL_BOT_SECRET_XYZ')
   assert.equal(creds[0].userOpenid, 'USER_OPENID_SCANNER')
   assert.equal(decryptBindSecret(encryptSecret('hello_secret', keyByTask.get('TASK_2')), keyByTask.get('TASK_2')), 'hello_secret')
+})
+
+test('内置 telegram 模块与多平台并存路由：/telegram/ 路由前缀、Token 脱敏、三端群列表聚合与独立卸载', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'aurabot-builtin-multi-'))
+  try {
+    const listeners = new Map()
+    const cfg = {
+      enabled: true,
+      dryRun: false,
+      botQQ: '99887766',
+      ownerQQ: '12345678',
+      ownerName: '主人',
+      allow: { private: [], groups: ['555666'] },
+      modules: {},
+      ext: {
+        qqbot: {
+          enabled: false,
+          appId: '102030405',
+          appSecret: 'QQ_SECRET_NO_LEAK',
+          autoSyncFromDshPlugin: false,
+          ownerOpenid: 'QQ_OWNER_OPENID_1',
+          ownerSessionMode: 'shared',
+          c2cMode: 'open',
+          groupMode: 'open',
+          groupAllow: 'QQ_GROUP_OPENID_A',
+          requireMentionInGroup: false,
+          nonMentionReplyMode: 'always',
+        },
+        telegram: {
+          enabled: false,
+          token: '998877:AAH_SUPER_SECRET_TG_TOKEN',
+          apiBase: 'https://api.telegram.org',
+          ownerId: '77665544',
+          ownerSessionMode: 'shared',
+          c2cMode: 'open',
+          groupMode: 'open',
+          allowGroups: '-1009876543210',
+          requireMentionInGroup: false,
+          nonMentionReplyMode: 'always',
+        },
+      },
+    }
+
+    const onebot = {
+      state: 'connected',
+      async call(action) {
+        if (action === 'get_group_list') return [{ group_id: 555666, group_name: '原版QQ群' }]
+        return { message_id: 2001 }
+      },
+    }
+
+    const makeModuleApi = (id, def) => {
+      const offs = []
+      const routes = new Map()
+      return {
+        id,
+        routes,
+        log: { info() {}, warn() {}, error() {}, debug() {} },
+        config: () => cfg,
+        settings: () => ({ ...(def.defaults || {}), ...(cfg.ext[id] || {}) }),
+        saveSettings: (patch) => { cfg.ext[id] = { ...(cfg.ext[id] || {}), ...patch }; return cfg.ext[id] },
+        dataDir: (...p) => join(tmp, id, ...p),
+        core: {
+          onebot,
+          hub: { async onMessage() {} },
+          http: { body: async (req) => req || {} },
+        },
+        on(ev, fn) {
+          const l = listeners.get(ev) || []
+          l.push(fn)
+          listeners.set(ev, l)
+          const off = () => listeners.set(ev, (listeners.get(ev) || []).filter((x) => x !== fn))
+          offs.push(off)
+          return off
+        },
+        emit(ev, ...args) {
+          for (const fn of listeners.get(ev) || []) fn(...args)
+        },
+        every: () => () => {},
+        later: () => () => {},
+        route: (p, h) => { routes.set(p, h); return () => routes.delete(p) },
+        command: () => () => {},
+        onDispose: (fn) => offs.push(fn),
+        _disposeAll: () => { for (const fn of offs.splice(0).reverse()) fn() },
+      }
+    }
+
+    const qqApi = makeModuleApi('qqbot', qqbotModule)
+    const tgApi = makeModuleApi('telegram', telegramModule)
+    const qqExports = qqbotModule.setup(qqApi)
+    const tgExports = telegramModule.setup(tgApi)
+
+    // 1. /telegram/ 路由前缀与密钥脱敏
+    assert.ok(tgApi.routes.size > 0)
+    for (const path of tgApi.routes.keys()) {
+      assert.ok(path.startsWith('/telegram/'), `Telegram 路由缺少 /telegram/ 前缀：${path}`)
+    }
+    const tgSt1 = await tgApi.routes.get('/telegram/status')()
+    assert.equal(tgSt1.ok, true)
+    assert.equal(tgSt1.settings.tokenSet, true)
+    assert.equal(tgSt1.settings.ownerId, '77665544')
+    assert.equal(JSON.stringify(tgSt1).includes('AAH_SUPER_SECRET_TG_TOKEN'), false, '/telegram/status 不应泄露明文 token')
+
+    // 2. 空 token 保存不冲掉已存 token
+    const tgSaveRes = await tgApi.routes.get('/telegram/save')({
+      enabled: false,
+      token: '',
+      apiBase: 'https://tg-proxy.example.com/',
+      ownerId: '88776655',
+      requireMentionInGroup: false,
+      nonMentionReplyMode: 'always',
+    })
+    assert.equal(tgSaveRes.ok, true)
+    assert.equal(cfg.ext.telegram.token, '998877:AAH_SUPER_SECRET_TG_TOKEN')
+    assert.equal(cfg.ext.telegram.ownerId, '88776655')
+    assert.equal(tgExports.summary().hasToken, true)
+
+    // 3. 三端共享主人映射（Telegram ownerId 与 QQBot ownerOpenid 均映射到同一 cfg.ownerQQ）
+    assert.equal(tgExports.toVirtualUser('88776655', '主人TG'), '12345678')
+    assert.equal(qqExports.toVirtualUser('QQ_OWNER_OPENID_1', '主人QQ'), '12345678')
+
+    // 4. 三端群列表聚合（OneBot 555666 + Telegram 72... + QQBot 82...）
+    const tgVirtGroup = tgExports.toVirtualGroup('-1009876543210', 'TG测试群')
+    const qqVirtGroup = qqExports.toVirtualGroup('QQ_GROUP_OPENID_A', 'QQBot测试群')
+    assert.equal(tgVirtGroup.slice(0, 2), '72')
+    assert.equal(qqVirtGroup.slice(0, 2), '82')
+    const mergedGroups = await onebot.call('get_group_list', {})
+    const gids = mergedGroups.map((g) => String(g.group_id))
+    assert.ok(gids.includes('555666'))
+    assert.ok(gids.includes(tgVirtGroup))
+    assert.ok(gids.includes(qqVirtGroup))
+
+    // 5. group/decide 群聊免 @ 直回钩子分别对 72... 与 82... 生效，不影响原版 555666
+    const runDecide = (groupId) => {
+      let cur = { reply: false, mode: 'skip', reason: 'default' }
+      for (const fn of listeners.get('group/decide') || []) {
+        const next = fn(cur, { msg: { groupId, atOthers: false } })
+        if (next !== undefined) cur = next
+      }
+      return cur
+    }
+    assert.equal(runDecide(tgVirtGroup).reply, true)
+    assert.equal(runDecide(qqVirtGroup).reply, true)
+    assert.equal(runDecide('555666').reply, false)
+
+    // 6. 单独卸载 telegram 后，qqbot 与原版 onebot 依然正常聚合
+    tgApi._disposeAll()
+    const afterTgDispose = await onebot.call('get_group_list', {})
+    const afterIds = afterTgDispose.map((g) => String(g.group_id))
+    assert.ok(afterIds.includes('555666'))
+    assert.ok(afterIds.includes(qqVirtGroup))
+    assert.ok(!afterIds.includes(tgVirtGroup))
+
+    qqApi._disposeAll()
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+  }
+})
+
+test('Telegram 内置接线与空间防刷屏契约：BUILTINS / Connect / Wizard / files / qzone-social', async () => {
+  const { readFileSync } = await import('node:fs')
+  const { fileURLToPath } = await import('node:url')
+  const { dirname } = await import('node:path')
+  const srcRoot = join(dirname(fileURLToPath(import.meta.url)), '..', 'src')
+
+  const { BUILTINS } = await import('../src/modules/index.js')
+  assert.ok(BUILTINS.some((m) => m && m.id === 'telegram'), 'BUILTINS 应包含 telegram 模块')
+
+  // 验证 /modules/fork 依赖的 files 声明全部真实存在于 src/ 下
+  for (const mod of [qqbotModule, telegramModule]) {
+    assert.ok(Array.isArray(mod.files) && mod.files.length > 0, `${mod.id} 应声明关联 files`)
+    for (const rel of mod.files) {
+      assert.equal(existsSync(join(srcRoot, rel)), true, `${mod.id}.files 缺失文件：src/${rel}`)
+    }
+  }
+
+  const { normalize } = await import('../src/core/config.js')
+  assert.equal(normalize({ gateway: 'telegram' }).gateway, 'telegram', 'config.js 应保留 gateway=telegram')
+
+  const clientSrc = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
+  assert.ok(clientSrc.includes('function TelegramCard({ toast, reload })'), 'client.js 缺少 TelegramCard 组件')
+  assert.ok(clientSrc.includes('h(TelegramCard, { toast, reload })'), 'Connect 页未挂载 TelegramCard')
+  assert.ok(clientSrc.includes("{ value: 'telegram', label: '用 Telegram 机器人"), 'GatewayChoice 应包含 Telegram 选项')
+  assert.ok(clientSrc.includes("const isTg = draft.gateway === 'telegram'"), 'Wizard 与 Connect 应处理 gateway=telegram 分支')
+
+  const hostSrc = readFileSync(new URL('../src/host.js', import.meta.url), 'utf8')
+  assert.ok(hostSrc.includes("telegram: use('telegram')?.summary?.() ?? null"), 'overview() 缺少 telegram 摘要字段')
+  assert.ok(hostSrc.includes("cfg.gateway === 'telegram'"), 'host.js 应支持 Telegram 独立完成设置向导与连接检测')
+
+  const qzoneSrc = readFileSync(new URL('../src/features/qzone-social.js', import.meta.url), 'utf8')
+  assert.ok(qzoneSrc.includes("onebot.state !== 'connected'"), 'qzone-social.js 在未连 OneBot 时应跳过逛空间轮询')
 })
 

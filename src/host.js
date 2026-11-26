@@ -111,7 +111,7 @@ export function apply(ctx) {
     savePassword: (pw, auto = true) => setConfig({ ...cfg, snowluma: { ...cfg.snowluma, webuiPassword: pw, passwordAuto: auto } }),
   })
   const endpoint = () => {
-    if (cfg.gateway === 'qqbot') return { httpUrl: '', wsUrl: '', httpToken: '', wsToken: '' }
+    if (cfg.gateway === 'qqbot' || cfg.gateway === 'telegram') return { httpUrl: '', wsUrl: '', httpToken: '', wsToken: '' }
     const s = cfg.snowluma
     // 接自己的 OneBot 时只认填的地址；用 SnowLuma 时没填的从它的配置里读
     const auto = cfg.gateway === 'onebot' || (s.httpUrl && s.wsUrl) ? null : snowluma.endpoint()
@@ -664,8 +664,8 @@ export function apply(ctx) {
       const r = await snowluma.start()
       log.info('SnowLuma：', r.message)
     }
-    // 纯官方 QQBot 模式下停止原版 OneBot 重连循环（即使历史配置里残留了旧 wsUrl）
-    if (cfg.gateway === 'qqbot') {
+    // 纯官方 QQBot / Telegram 模式下停止原版 OneBot 重连循环（即使历史配置里残留了旧 wsUrl）
+    if (cfg.gateway === 'qqbot' || cfg.gateway === 'telegram') {
       if (onebot.state !== 'stopped') onebot.stop()
       return
     }
@@ -727,6 +727,7 @@ export function apply(ctx) {
       onebot: { state: onebotState, login, endpoint: { httpUrl: endpoint().httpUrl, wsUrl: endpoint().wsUrl }, problem: onebotState === 'connected' && loginOk ? '' : await connectionProblem() },
       snowluma: { ...inst, running, consented: await consented(running), owns: snowluma.ownsProcess, lastAttach: snowluma.lastAttach, downloadPage: DOWNLOAD_PAGE, webui: snowluma.webuiUrl() },
       qqbot: use('qqbot')?.summary?.() ?? null,
+      telegram: use('telegram')?.summary?.() ?? null,
       stats: hub.stats(),
       // 模块关着时给个空壳，面板照常显示
       mood: use('mood')?.state?.() ?? { value: 0, label: '心情模块关着', reason: '', history: [] },
@@ -802,7 +803,7 @@ export function apply(ctx) {
     const changedModel = before.model.provider !== cfg.model.provider || before.model.model !== cfg.model.model
     if (changedModel) { clearReasoningCache(); clearVisionCache() }
     if (changedConn || before.botQQ !== cfg.botQQ) wrongAccount = ''
-    if (cfg.gateway === 'qqbot') {
+    if (cfg.gateway === 'qqbot' || cfg.gateway === 'telegram') {
       if (onebot.state !== 'stopped') onebot.stop()
     } else if (changedConn && onebot.state !== 'stopped') {
       onebot.restart()
@@ -1241,6 +1242,22 @@ export function apply(ctx) {
       log.info('首次使用向导完成（官方 QQBot）')
       return { ...(await overview()), message: '设置完成，大肥鱼可以上线啦' }
     }
+    if (cfg.gateway === 'telegram') {
+      const tgOwnerDigits = String(cfg.ext?.telegram?.ownerId || '').replace(/\D/g, '').slice(0, 11)
+      const nextOwnerQQ = cfg.ownerQQ || (/^\d{5,11}$/.test(tgOwnerDigits) ? tgOwnerDigits : '')
+      if (!nextOwnerQQ) return { ok: false, message: '先填好你的主人号（QQ 号或 Telegram 数字 ID）' }
+      const tgBotDigits = String(use('telegram')?.summary?.()?.botId || '').replace(/\D/g, '').slice(0, 11)
+      const fallbackBotId = /^\d{5,11}$/.test(tgBotDigits) ? tgBotDigits : '700000001'
+      const nextBotQQ = cfg.botQQ && cfg.botQQ !== nextOwnerQQ
+        ? cfg.botQQ
+        : (fallbackBotId !== nextOwnerQQ ? fallbackBotId : '700000002')
+      if (body.existingConnection && use('telegram')?.active?.() !== true) {
+        return { ok: false, message: 'Telegram 机器人还没连上，请先保存 Token 并连接成功后再进入面板' }
+      }
+      setConfig({ ...cfg, ownerQQ: nextOwnerQQ, botQQ: nextBotQQ, setupDone: true })
+      log.info('首次使用向导完成（Telegram）')
+      return { ...(await overview()), message: '设置完成，大肥鱼可以上线啦' }
+    }
     if (!cfg.botQQ || !cfg.ownerQQ || cfg.botQQ === cfg.ownerQQ) return { ok: false, message: '先填好不同的机器人 QQ 和你的 QQ' }
     if (body.existingConnection && !(cfg.enabled && onebotState === 'connected' && loginOk)) return { ok: false, message: 'QQ 网关还没通过机器人号核对，请先连接并核对后再进入面板' }
     setConfig({ ...cfg, setupDone: true })
@@ -1259,6 +1276,13 @@ export function apply(ctx) {
       if (!q?.appId) return '还没配置官方 QQBot：在「连接」页扫码绑定或填写 AppID / AppSecret'
       if (!q?.enabled) return '官方 QQBot 开关还没打开：在「连接」页打开「启用官方 QQBot」并保存'
       return '官方 QQBot 还没连上：在「连接」页检查 AppID / AppSecret 或点「重新连接」'
+    }
+    if (cfg.gateway === 'telegram') {
+      const tg = use('telegram')?.summary?.()
+      if (tg?.state === 'connected') return ''
+      if (!tg?.hasToken) return '还没填 Telegram Bot Token：在「连接」页填写从 @BotFather 获取的 Token 并保存'
+      if (!tg?.enabled) return 'Telegram 开关还没打开：在「连接」页打开「启用 Telegram」并保存'
+      return 'Telegram 还没连上：在「连接」页检查网络 / API 地址或点「重新连接」'
     }
     if (!cfg.botQQ) return '还没填机器人 QQ 号'
     if (cfg.gateway === 'onebot') {

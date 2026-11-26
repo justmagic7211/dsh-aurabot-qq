@@ -193,6 +193,7 @@ export default {
   version: '1.0.0',
   api: 1,
   tab: 'connect',
+  files: ['modules/qqbot/router.js', 'modules/qqbot/lite.js', 'modules/qqbot/sdk-loader.js', 'modules/qqbot/qr.js'],
   description: '对接 @tencent-connect/dsh-qqbot@latest（腾讯官方 QQ 开放平台机器人）：免 SnowLuma / 免公网 IP，支持手机 QQ 扫码绑定或 AppID/AppSecret 直连。',
 
   defaults: {
