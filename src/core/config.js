@@ -330,7 +330,7 @@ export function normalize(raw) {
   c.approvalNotify = bool(c.approvalNotify, true)
   c.approvalViaQQ = bool(c.approvalViaQQ, true)
   c.qqApi.enabled = bool(c.qqApi.enabled, true)
-  c.gateway = c.gateway === 'onebot' ? 'onebot' : 'snowluma'
+  c.gateway = ['onebot', 'qqbot'].includes(c.gateway) ? c.gateway : 'snowluma'
   // 只认绝对路径（Windows 的 D:\\… 或 Linux 的 /…），别的当没填
   c.workspaceDir = String(c.workspaceDir || '').trim()
   if (c.workspaceDir && !/^([a-zA-Z]:[\\/]|\/)/.test(c.workspaceDir)) c.workspaceDir = ''

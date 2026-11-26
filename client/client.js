@@ -1023,11 +1023,12 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
           h('span', { className: 'ab-muted ab-small' }, 'SnowLuma 是独立的第三方项目，仅限个人非商业使用；使用非官方 QQ 工具有账号风险，请用小号。')))
     }
 
-    /** 用什么接 QQ：插件帮你管 SnowLuma，或接你已有的 OneBot v11 机器人。 */
+    /** 用什么接 QQ：插件帮你管 SnowLuma、接已有的 OneBot v11，或直接连腾讯官方 QQBot。 */
     function GatewayChoice({ draft, setDraft }) {
       return h(Choices, { value: draft.gateway || 'snowluma', onChange: (v) => setDraft(setPath(draft, 'gateway', v)), options: [
-        { value: 'snowluma', label: '用 SnowLuma（Windows，推荐）', desc: '插件帮你启动、接入机器人号、断线重连' },
-        { value: 'onebot', label: '接我已有的 OneBot 机器人', desc: 'NapCat、LLOneBot、Lagrange、Docker 里的 SnowLuma 等任何 OneBot v11 实现；Linux / Docker 部署选这个' },
+        { value: 'snowluma', label: '用 SnowLuma（Windows）', desc: '插件帮你启动、接入机器人号、断线重连' },
+        { value: 'onebot', label: '接我已有的 OneBot 机器人', desc: 'NapCat、LLOneBot、Lagrange、Docker 里的 SnowLuma 等任何 OneBot v11 实现' },
+        { value: 'qqbot', label: '用腾讯官方 QQBot（免网关，Mac / Win / Linux 通用）', desc: 'QQ 开放平台官方机器人：手机 QQ 扫码绑定或填 AppID/AppSecret，免装 SnowLuma / NapCat' },
       ] })
     }
 
@@ -1210,12 +1211,13 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
       const act = (p) => async () => { const r = await post(p); toast(r.message || (r.ok ? '好了' : '没成功')); reload() }
       const login = st.onebot.login
       const external = draft.gateway === 'onebot'
+      const isQqbot = draft.gateway === 'qqbot'
       const testBtns = h('div', { className: 'ab-flex', style: { marginTop: 8 } },
         h(Btn, { small: true, onClick: async () => { const r = await get('/onebot/test'); toast(r.message) } }, '测试连接'),
         h(Btn, { small: true, onClick: async () => { const r = await post('/onebot/reconnect'); toast(r.message, r.ok ? 'ok' : 'err'); reload() } }, '重新连接'))
       return h('div', { className: 'ab-grid' },
         h(Card, { title: '用什么接 QQ', right: openWizard ? h(Btn, { small: true, kind: 'ghost', onClick: openWizard }, '重新走一遍设置向导') : null }, h(GatewayChoice, { draft, setDraft })),
-        external ? h(Card, { title: '接上 QQ（已有的 OneBot 机器人）', desc: '让你的 OneBot 服务登录机器人号 ' + (draft.botQQ || '') + '，把它的正向 WebSocket 地址填在这里，保存后插件就会去连。插件只连接，不会启动或注入任何东西；连上后会先核对登录的是不是机器人号，不是就断开。' },
+        isQqbot ? null : external ? h(Card, { title: '接上 QQ（已有的 OneBot 机器人）', desc: '让你的 OneBot 服务登录机器人号 ' + (draft.botQQ || '') + '，把它的正向 WebSocket 地址填在这里，保存后插件就会去连。插件只连接，不会启动或注入任何东西；连上后会先核对登录的是不是机器人号，不是就断开。' },
           h(OneBotFields, { draft, f }),
           h(Row, { label: '机器人 QQ 号' }, f.text('botQQ')),
           testBtns) :
@@ -1304,7 +1306,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
                   if (r.ok) { setPubBase(null); reload() }
                 } }, '关闭远端直连') : null)))
         })(),
-        external ? null : h(Card, { title: '高级', desc: '一般不用动：地址和令牌会自动从 SnowLuma 的配置里读。' },
+        external || isQqbot ? null : h(Card, { title: '高级', desc: '一般不用动：地址和令牌会自动从 SnowLuma 的配置里读。' },
           h(Row, { label: '机器人 QQ 号' }, f.text('botQQ')),
           h(Row, { label: '控制台端口' }, f.num('snowluma.webuiPort', { min: 1, max: 65535 })),
           h(Row, { label: '控制台密码', hint: '默认由插件自动生成，上面「显示密码」能看到。想自己定一个就填在这里，保存后会真的改到 SnowLuma 上（至少 10 位，要有大小写字母和符号，不能有空格）' }, f.text('snowluma.webuiPassword', { type: 'password', placeholder: draft.snowluma.webuiPasswordSet ? (draft.snowluma.passwordAuto ? '自动管理中（不改就留空）' : '已保存（不改就留空）') : '留空 = 自动' })),
@@ -5008,10 +5010,20 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
       const login = st.onebot.login
       const [procs, setProcs] = useState(null)
       const [live, setLive] = useState('dry')
-      const qqOk = /^\d{5,11}$/.test(draft.botQQ || '') && /^\d{5,11}$/.test(draft.ownerQQ || '') && draft.botQQ !== draft.ownerQQ
       const external = draft.gateway === 'onebot'
-      const verified = conn && login && String(login.uin) === String(st.config.botQQ) && !st.onebot.problem
-      const canNext = [qqOk, external ? Boolean(draft.snowluma.wsUrl || st.config.snowluma.wsUrl) : sl.installed, external || (sl.running && sl.consented), verified, true][step]
+      const isQqbot = draft.gateway === 'qqbot'
+      const ownerOk = /^\d{5,11}$/.test(draft.ownerQQ || '')
+      const botOk = /^\d{5,11}$/.test(draft.botQQ || '') && draft.botQQ !== draft.ownerQQ
+      const qqOk = isQqbot ? (ownerOk && (!draft.botQQ || botOk)) : (botOk && ownerOk)
+      const qqbotReady = Boolean(st.qqbot && st.qqbot.state === 'connected')
+      const verified = isQqbot ? qqbotReady : (conn && login && String(login.uin) === String(st.config.botQQ) && !st.onebot.problem)
+      const canNext = [
+        qqOk,
+        isQqbot ? Boolean(st.qqbot && (st.qqbot.appId || st.qqbot.state === 'connected')) : external ? Boolean(draft.snowluma.wsUrl || st.config.snowluma.wsUrl) : sl.installed,
+        isQqbot || external || (sl.running && sl.consented),
+        verified,
+        true,
+      ][step]
       const next = async () => {
         if ((step === 0 || step === 1) && !(await save({ ...draft, enabled: true }))) return
         go(Math.min(step + 1, WIZ_STEPS.length - 1))
@@ -5023,15 +5035,21 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
         if (r.ok) { try { localStorage.removeItem('aurabot.wiz') } catch (e) {} reload(); onClose && onClose() }
       }
       const body = [
-        // 0. QQ 号
+        // 0. 接入方式与 QQ 号
         h('div', null,
-          h('p', { className: 'ab-desc' }, '大肥鱼需要一个自己的 QQ 号（机器人号），还要知道谁是ta的主人。'),
-          h(Row, { label: '机器人 QQ 号', hint: '强烈建议用小号：非官方 QQ 工具有被限制的风险' }, f.text('botQQ', { placeholder: '例如 123456789' })),
+          h('p', { className: 'ab-desc' }, '先选一下用什么方式接 QQ，再填你的主人 QQ 号。'),
+          h('div', { style: { marginBottom: 12 } }, h(GatewayChoice, { draft, setDraft })),
+          isQqbot
+            ? h(Row, { label: '机器人 QQ 号（选填）', hint: '用官方 QQBot 时可留空（会自动用机器人的 AppID 作为标识）' }, f.text('botQQ', { placeholder: '留空自动生成' }))
+            : h(Row, { label: '机器人 QQ 号', hint: '强烈建议用小号：非官方 QQ 工具有被限制的风险' }, f.text('botQQ', { placeholder: '例如 123456789' })),
           h(Row, { label: '你的 QQ 号（主人）', hint: '群管、操作电脑这些只听主人的' }, f.text('ownerQQ', { placeholder: '你的大号' })),
           h(Row, { label: 'ta怎么称呼你' }, f.text('ownerName', { placeholder: '主人' })),
           h(Row, { label: '工作区文件夹', hint: 'ta在 QQ 会话里读写文件的地方，C 盘空间紧就放到别的盘，比如 D:\\Aurabot\\qq-chats。填完整路径，留空用默认位置。以后想换，在「连接」页能搬。聊天记录和记忆在用户目录的 .dsh 里，不在这个文件夹' }, f.text('workspaceDir', { size: 'wide', placeholder: st.workspaceDir || '' })),
           draft.botQQ && draft.ownerQQ && draft.botQQ === draft.ownerQQ ? h('div', { className: 'ab-note err' }, '机器人号和主人号不能是同一个。') : null),
-        // 1. SnowLuma，或接已有的 OneBot 机器人
+        // 1. 官方 QQBot / 已有的 OneBot / SnowLuma
+        isQqbot ? h('div', null,
+          h(GatewayChoice, { draft, setDraft }),
+          h('div', { style: { marginTop: 12 } }, h(QQBotCard, { toast, reload }))) :
         external ? h('div', null,
           h(GatewayChoice, { draft, setDraft }),
           h('p', { className: 'ab-desc', style: { marginTop: 10 } }, '让你的 OneBot 服务（NapCat、LLOneBot、Lagrange、Docker 里的 SnowLuma……）登录机器人号，把它的正向 WebSocket 地址填在下面。插件只连接，不会启动或注入任何东西。'),
@@ -5045,7 +5063,8 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
             h('div', { className: cx('ab-step', sl.installed && 'done') }, h('div', null, h('b', null, '解压到纯英文目录'), h('div', { className: 'ab-muted ab-small' }, '推荐 C:\\Aurabot\\snowluma，解压后目录里能直接看到 index.mjs。'),
               h('div', { className: 'ab-flex', style: { marginTop: 6 } }, f.text('snowluma.dir', { size: 'wide', placeholder: 'C:\\Aurabot\\snowluma' }), h(Btn, { small: true, onClick: async () => { await save(draft); reload() } }, '检查')),
               h('div', { className: 'ab-small', style: { marginTop: 4, color: sl.installed ? 'var(--ab-ok)' : 'var(--ab-warn)' } }, sl.installed ? '✓ 找到了 SnowLuma v' + sl.version : sl.reason))))),
-        // 2. 启动 + 协议（接自己的 OneBot 时不用）
+        // 2. 启动 + 协议（官方 QQBot 或接自己的 OneBot 时不用）
+        isQqbot ? h('div', null, h('p', { className: 'ab-desc' }, '用的是腾讯官方 QQBot（QQ 开放平台 WebSocket 直连），无需安装或启动第三方网关，直接下一步。')) :
         external ? h('div', null, h('p', { className: 'ab-desc' }, '用的是你自己的 OneBot 服务，这一步不用做，直接下一步。')) :
         h('div', null,
           h('p', { className: 'ab-desc' }, '点启动后它在后台运行（不弹窗口），控制台密码由插件自动生成和保存，你不用记。'),
@@ -5054,6 +5073,14 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
             h(SnowLumaAuth, { running: sl.running, toast, onChange: reload })),
           h(Agreement, { running: sl.running, toast, onChange: reload })),
         // 3. 接入
+        isQqbot ? h('div', null,
+          h('p', { className: 'ab-desc' }, '确认官方 QQBot 已连接腾讯开放平台网关（若刚才只填了 AppID / AppSecret 还没开，点下面「连接官方 QQBot」）。'),
+          h('div', { className: 'ab-flex' },
+            h(Btn, { kind: 'primary', small: true, onClick: async () => { const r = await post('/qqbot/reconnect'); toast(r.message, r.ok ? 'ok' : 'err'); setTimeout(reload, 1000) } }, '连接官方 QQBot'),
+            h(Btn, { small: true, onClick: () => reload() }, '刷新状态')),
+          qqbotReady
+            ? h('div', { className: 'ab-note', style: { marginTop: 10 } }, '✓ 官方 QQBot 已连上' + (st.qqbot.appId ? '（AppID ' + st.qqbot.appId + '）' : '') + '，可以下一步啦！')
+            : h('div', { className: 'ab-muted ab-small', style: { marginTop: 10 } }, '当前状态：' + ((st.qqbot && st.qqbot.state) || '未连接') + '。如果还没填凭据，点「上一步」扫码或保存 AppID / AppSecret。')) :
         h('div', null,
           external ? h('p', { className: 'ab-desc' }, '确认你的 OneBot 服务登录的是机器人号 ' + (st.config.botQQ || '') + '，然后点「测试连接」。插件连上后会先核对登录的号，不是机器人号就断开。') :
           h('p', { className: 'ab-desc' }, '在这台电脑上另开一个 QQ，登录机器人号 ' + (st.config.botQQ || '') + '（可以最小化）。你的大号 QQ 照常开着就行——插件只会接入机器人号，绝不碰别的号。'),
@@ -5075,7 +5102,12 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
             { value: 'live', label: '直接上线', desc: '马上开始真的回 QQ 消息' },
           ] }),
           h('div', { className: 'ab-flex', style: { marginTop: 12 } },
-            h(Btn, { small: true, onClick: async () => { await save({ ...draft, enabled: true, dryRun: false }); const r = await post('/test-send'); toast(r.message); await save({ ...draft, enabled: true, dryRun: live === 'dry' }) } }, '给我发一条自测消息'))),
+            h(Btn, { small: true, onClick: async () => {
+              await save({ ...draft, enabled: true, dryRun: false })
+              const r = isQqbot ? await post('/qqbot/test-send', {}) : await post('/test-send')
+              toast(r.message, r.ok === false ? 'err' : 'ok')
+              await save({ ...draft, enabled: true, dryRun: live === 'dry' })
+            } }, '给我发一条自测消息'))),
       ][step]
       return h('div', { className: 'ab-card', style: { padding: '20px 22px' } },
         h('div', { className: 'ab-flex', style: { marginBottom: 6 } }, h('h3', { style: { margin: 0, fontSize: 16 } }, '设置向导'), h('span', { className: 'ab-muted ab-small' }, '第 ' + (step + 1) + ' / ' + WIZ_STEPS.length + ' 步 · ' + WIZ_STEPS[step]), h('div', { className: 'ab-spacer' }),
@@ -5183,7 +5215,9 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
       }
       const cfg = st.config
       const conn = st.onebot.state === 'connected'
-      const status = !cfg.enabled ? { cls: '', text: '休息中（总开关关着）' } : !conn ? { cls: 'err', text: 'QQ 没连上' } : cfg.dryRun ? { cls: 'warn', text: '在线 · 试运行' } : { cls: 'ok', text: '在线' }
+      const qqbotConn = Boolean(st.qqbot && st.qqbot.state === 'connected')
+      const anyConn = conn || qqbotConn
+      const status = !cfg.enabled ? { cls: '', text: '休息中（总开关关着）' } : !anyConn ? { cls: 'err', text: 'QQ 没连上' } : cfg.dryRun ? { cls: 'warn', text: '在线 · 试运行' } : { cls: 'ok', text: '在线' }
       const persona = st.personas.find((p) => p.id === cfg.persona.current)
       const props = { st, draft, setDraft: setD, toast, reload, go, openWizard: () => setWizardOpen(true) }
       const showWizard = !cfg.setupDone || wizardOpen
@@ -5204,7 +5238,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
         stickers: Stickers, imagegen: ImageGen, diary: Diary, speakup: SpeakUp, pet: PetPanel, mood: Mood, persona: PersonaMemory, song: Song, bili: Bili, douyin: Douyin, heybox: Heybox, local: LocalApi, security: Security, market: Market, modules: Modules, logs: Logs, about: About, backup: Backup,
       }[curTab.id] || Overview
       // 哪些标签有没保存的改动
-      const TAB_KEYS = { connect: ['snowluma', 'botQQ'], access: ['ownerQQ', 'ownerName', 'ownerLevel', 'approvalNotify', 'approvalViaQQ', 'qqApi', 'longTasks', 'profilePerms', 'allow'], group: ['group', 'merge', 'titleFilter', 'chat'], model: ['model', 'chatModels'], voice: ['voice'], stickers: ['stickers'], imagegen: ['imageGen'], diary: ['diary', 'qzoneSocial'], speakup: ['speakUp'], pet: [], mood: ['mood', 'memory'], song: ['song'], bili: ['bili'], douyin: ['douyin'], heybox: ['heybox'], local: ['local'], security: ['security', 'update'] }
+      const TAB_KEYS = { connect: ['gateway', 'snowluma', 'botQQ'], access: ['ownerQQ', 'ownerName', 'ownerLevel', 'approvalNotify', 'approvalViaQQ', 'qqApi', 'longTasks', 'profilePerms', 'allow'], group: ['group', 'merge', 'titleFilter', 'chat'], model: ['model', 'chatModels'], voice: ['voice'], stickers: ['stickers'], imagegen: ['imageGen'], diary: ['diary', 'qzoneSocial'], speakup: ['speakUp'], pet: [], mood: ['mood', 'memory'], song: ['song'], bili: ['bili'], douyin: ['douyin'], heybox: ['heybox'], local: ['local'], security: ['security', 'update'] }
       const tabDirty = (id) => {
         if (!dirty) return false
         if (id.startsWith('ext:')) { const k = id.slice(4); return JSON.stringify((draft.ext || {})[k]) !== JSON.stringify((cfg.ext || {})[k]) }
@@ -5219,7 +5253,9 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
               h('div', { className: 'ab-sub' }, 'QQ ' + cfg.botQQ + ' · ' + (persona ? persona.name : '默认人格') + ' · ' + st.mood.label),
               h('div', { className: 'ab-pills' },
                 h('span', { className: 'ab-pill' }, h('i', { className: cx('ab-dot', status.cls) }), status.text),
-                h('span', { className: 'ab-pill' }, 'SnowLuma ' + (st.snowluma.installed ? (st.snowluma.running ? '运行中' : '没启动') : '未安装')),
+                cfg.gateway === 'qqbot' || (st.qqbot && st.qqbot.enabled)
+                  ? h('span', { className: 'ab-pill' }, '官方 QQBot ' + ({ connected: '运行中', connecting: '连接中', stopped: '没连上' }[st.qqbot && st.qqbot.state] || '未启用'))
+                  : h('span', { className: 'ab-pill' }, 'SnowLuma ' + (st.snowluma.installed ? (st.snowluma.running ? '运行中' : '没启动') : '未安装')),
                 h('span', { className: 'ab-pill' }, 'Aurabot v' + st.version))),
             h('div', { className: 'ab-hero-side' },
               h('div', { className: 'ab-switch-row' }, h('span', null, '总开关'), h(Switch, { on: cfg.enabled, onChange: (v) => quickToggle('enabled', v) })),

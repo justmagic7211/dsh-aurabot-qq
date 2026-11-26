@@ -112,8 +112,8 @@ export function apply(ctx) {
   })
   const endpoint = () => {
     const s = cfg.snowluma
-    // 接自己的 OneBot 时只认填的地址；用 SnowLuma 时没填的从它的配置里读
-    const auto = cfg.gateway === 'onebot' || (s.httpUrl && s.wsUrl) ? null : snowluma.endpoint()
+    // 接自己的 OneBot 或纯官方 QQBot 时只认填的地址；用 SnowLuma 时没填的从它的配置里读
+    const auto = cfg.gateway !== 'snowluma' || (s.httpUrl && s.wsUrl) ? null : snowluma.endpoint()
     return {
       httpUrl: s.httpUrl || auto?.httpUrl || '',
       wsUrl: s.wsUrl || auto?.wsUrl || '',
@@ -662,6 +662,11 @@ export function apply(ctx) {
     if (own && inst.installed && cfg.snowluma.autoStart && !(await snowluma.running())) {
       const r = await snowluma.start()
       log.info('SnowLuma：', r.message)
+    }
+    // 纯官方 QQBot 模式且未额外填 OneBot 地址时，不启动原版 OneBot 重连循环
+    if (cfg.gateway === 'qqbot' && !cfg.snowluma.wsUrl && !cfg.snowluma.httpUrl) {
+      if (onebot.state !== 'stopped') onebot.stop()
+      return
     }
     // 上次连上的不是机器人号：等主人手动点「接入机器人号」或改设置再连
     if (wrongAccount) return
@@ -1217,6 +1222,20 @@ export function apply(ctx) {
   })
   route('/setup/done', async (req) => {
     const body = await readBody(req)
+    if (cfg.gateway === 'qqbot') {
+      if (!cfg.ownerQQ) return { ok: false, message: '先填好你的 QQ 号（主人）' }
+      const rawAppDigits = String(use('qqbot')?.appId?.() || '').replace(/\D/g, '').slice(0, 11)
+      const fallbackBotId = /^\d{5,11}$/.test(rawAppDigits) ? rawAppDigits : '800000001'
+      const nextBotQQ = cfg.botQQ && cfg.botQQ !== cfg.ownerQQ
+        ? cfg.botQQ
+        : (fallbackBotId !== cfg.ownerQQ ? fallbackBotId : '800000002')
+      if (body.existingConnection && use('qqbot')?.active?.() !== true) {
+        return { ok: false, message: '官方 QQBot 还没连上，请先扫码绑定或连接成功后再进入面板' }
+      }
+      setConfig({ ...cfg, botQQ: nextBotQQ, setupDone: true })
+      log.info('首次使用向导完成（官方 QQBot）')
+      return { ...(await overview()), message: '设置完成，大肥鱼可以上线啦' }
+    }
     if (!cfg.botQQ || !cfg.ownerQQ || cfg.botQQ === cfg.ownerQQ) return { ok: false, message: '先填好不同的机器人 QQ 和你的 QQ' }
     if (body.existingConnection && !(cfg.enabled && onebotState === 'connected' && loginOk)) return { ok: false, message: 'QQ 网关还没通过机器人号核对，请先连接并核对后再进入面板' }
     setConfig({ ...cfg, setupDone: true })
@@ -1229,6 +1248,13 @@ export function apply(ctx) {
   /** 连不上 QQ 网关时，按顺序找卡在哪一步，给一句人话。 */
   async function connectionProblem() {
     if (!cfg.enabled) return '总开关关着（右上角），打开后才会连'
+    if (cfg.gateway === 'qqbot') {
+      const q = use('qqbot')?.summary?.()
+      if (q?.state === 'connected') return ''
+      if (!q?.appId) return '还没配置官方 QQBot：在「连接」页扫码绑定或填写 AppID / AppSecret'
+      if (!q?.enabled) return '官方 QQBot 开关还没打开：在「连接」页打开「启用官方 QQBot」并保存'
+      return '官方 QQBot 还没连上：在「连接」页检查 AppID / AppSecret 或点「重新连接」'
+    }
     if (!cfg.botQQ) return '还没填机器人 QQ 号'
     if (cfg.gateway === 'onebot') {
       const ep = endpoint()

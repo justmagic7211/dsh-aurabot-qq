@@ -347,5 +347,12 @@ test('内置接线契约：BUILTINS 含 qqbot，面板「连接」页含 QQBotCa
 
   const stickerSrc = readFileSync(new URL('../src/features/stickers.js', import.meta.url), 'utf8')
   assert.ok(stickerSrc.includes("onebot.call('add_custom_face', { file: localPath })"), 'stickers.js 未改为传本地文件路径')
+
+  // 设置向导与 gateway: 'qqbot' 兼容契约
+  const { normalize } = await import('../src/core/config.js')
+  assert.equal(normalize({ gateway: 'qqbot' }).gateway, 'qqbot', 'config.js 应保留 gateway=qqbot')
+  assert.ok(clientSrc.includes("{ value: 'qqbot', label: '用腾讯官方 QQBot"), 'GatewayChoice 应包含官方 QQBot 选项')
+  assert.ok(clientSrc.includes("const isQqbot = draft.gateway === 'qqbot'"), 'Wizard 与 Connect 应处理 gateway=qqbot 分支')
+  assert.ok(hostSrc.includes("if (cfg.gateway === 'qqbot')"), 'host.js 应支持官方 QQBot 独立完成首次使用向导')
 })
 
