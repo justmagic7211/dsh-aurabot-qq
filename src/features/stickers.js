@@ -148,19 +148,20 @@ export function createStickerStore({ dsh, getConfig, onebot, log }) {
     const mime = mimeOf(buf)
     mkdirSync(dir(), { recursive: true })
     const file = `collected-${md5}.${ext(mime)}`
-    writeFileSync(join(dir(), file), buf)
+    const localPath = join(dir(), file)
+    writeFileSync(localPath, buf)
     const item = { md5, file, name: '', tags: [], from, at: now, width, height, bytes: buf.length, emojiId: '', summary: String(d.summary || '').replace(/[[\]]/g, '') }
     // 商城表情（QQ 表情商店里的）：存下来的只是一张预览图，原样发回去才会按商城表情播放动画（#31）
     const marketId = String(d.emoji_id ?? d.emojiId ?? '').trim()
     if (marketId) item.market = { emojiId: marketId, packageId: Number(d.emoji_package_id ?? d.emojiPackageId ?? 0) || 0, key: String(d.key ?? '') }
     recent.push(now)
-    // 收藏到 QQ
-    if (!getConfig().dryRun) {
+    // 收藏到 QQ（传本地文件路径，避免 NapCat 对 base64:// 执行 fs.stat 报 ENAMETOOLONG 并刷屏）
+    if (!getConfig().dryRun && (!onebot.state || onebot.state === 'connected')) {
       try {
-        const r = await onebot.call('add_custom_face', { file: 'base64://' + buf.toString('base64') })
+        const r = await onebot.call('add_custom_face', { file: localPath })
         item.emojiId = String(r?.emoji_id || '')
       } catch (error) {
-        log.warn('收藏到 QQ 失败（本地已留档）：', error.message)
+        log.warn('收藏到 QQ 失败（本地已留档）：', String(error.message || '').replace(/base64:\/\/[A-Za-z0-9+/=]{120,}/g, (m) => `base64://[omitted ${m.length} chars]`))
       }
     }
     lib.items.push(item)
@@ -195,16 +196,17 @@ export function createStickerStore({ dsh, getConfig, onebot, log }) {
     if (!mime.startsWith('image/')) return { ok: false, reason: '不是图片' }
     mkdirSync(dir(), { recursive: true })
     const file = `manual-${md5}.${ext(mime)}`
-    writeFileSync(join(dir(), file), buf)
+    const localPath = join(dir(), file)
+    writeFileSync(localPath, buf)
     const { width, height } = imageSize(buf)
     const item = { md5, file, name: String(name).slice(0, 12), tags, from, at: Date.now(), width, height, bytes: buf.length, emojiId: '' }
-    if (toQQ && !getConfig().dryRun) {
+    if (toQQ && !getConfig().dryRun && (!onebot.state || onebot.state === 'connected')) {
       try {
-        const r = await onebot.call('add_custom_face', { file: 'base64://' + buf.toString('base64') })
+        const r = await onebot.call('add_custom_face', { file: localPath })
         item.emojiId = String(r?.emoji_id || '')
         if (item.emojiId && item.name) await onebot.call('modify_custom_face', { emoji_id: item.emojiId, desc: item.name })
       } catch (error) {
-        log.warn('收藏到 QQ 失败（本地已留档）：', error.message)
+        log.warn('收藏到 QQ 失败（本地已留档）：', String(error.message || '').replace(/base64:\/\/[A-Za-z0-9+/=]{120,}/g, (m) => `base64://[omitted ${m.length} chars]`))
       }
     }
     lib.items.push(item)

@@ -730,7 +730,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
     const navGroupOf = (t) => NAV_GROUPS.find((g) => g.tabs.includes(t.id)) || (t.ext && PLATFORM_EXT.test(t.label) ? NAV_GROUPS[3] : NAV_GROUPS[4])
     const navOrder = (g, t) => { const i = g.tabs.indexOf(t.id); return i >= 0 ? i : g.tabs.length - (g.tabs.includes('logs') ? 1.5 : 0) }
     const NAV_ALIAS = {
-      overview: '首页 状态', connect: 'qq 网关 snowluma onebot 登录 工作区', character: '人设 性格 设定 头像', persona: '人物 画像 小档案 群印象 梗概 时间轴 相处经验 说话方式', access: '主人 白名单 权限 群管 改资料',
+      overview: '首页 状态', connect: 'qq 网关 snowluma onebot qqbot 官方 开放平台 登录 工作区', character: '人设 性格 设定 头像', persona: '人物 画像 小档案 群印象 梗概 时间轴 相处经验 说话方式', access: '主人 白名单 权限 群管 改资料',
       group: '群聊 插话 合并', model: 'ai 大模型 视觉 思考强度', voice: '语音 tts 说话 音色 edge', stickers: '表情 小黄脸 gif 商城表情',
       imagegen: '画图 图片', diary: '空间 说说 日记', speakup: '搭话 主动', mood: '心情 记忆', song: '唱歌 翻唱 rvc 点歌',
       bili: 'b站 bilibili 视频', douyin: '抖音 短视频 私信', pet: '桌宠 宠物 悬浮窗 气泡 electron', local: '本地 接口 sd sovits', security: '安全 防护 ssrf 内网 图片 下载', modules: '扩展 自己写 模板 安全模式', market: '模块 市场 插件 社区 下载 安装 桌宠 抖音 小黑盒 群管', logs: '日志 报错', about: '关于 关于我们 版本 许可 鸣谢 开源', backup: '备份 恢复 换电脑 迁移 导入 导出',
@@ -851,7 +851,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
         h(UpdateNotes, { st, toast }),
         !cfg.enabled ? h('div', { className: 'ab-note warn' }, '总开关是关着的：大肥鱼现在不会收也不会发任何 QQ 消息。准备好了就在右上角打开。') : null,
         cfg.enabled && cfg.dryRun ? h('div', { className: 'ab-note' }, '现在是试运行：ta会照常思考回复，但只写进日志，不会真的发到 QQ。确认没问题后在右上角关掉「试运行」。') : null,
-        cfg.enabled && !conn ? h('div', { className: 'ab-note err' }, '还没连上 QQ 网关' + (st.onebot.problem ? '：' + st.onebot.problem + '。' : '。去「连接」标签看看 SnowLuma 有没有装好、启动没有。') + ' ', h('a', { href: '#', onClick: (e) => { e.preventDefault(); go('connect') } }, '去连接 →')) : null,
+        cfg.enabled && !conn && !(st.qqbot && st.qqbot.state === 'connected') ? h('div', { className: 'ab-note err' }, '还没连上 QQ 网关' + (st.onebot.problem ? '：' + st.onebot.problem + '。' : '。去「连接」标签看看 SnowLuma 有没有装好、启动没有。') + ' ', h('a', { href: '#', onClick: (e) => { e.preventDefault(); go('connect') } }, '去连接 →')) : null,
         h('div', { className: 'ab-grid ab-g4' },
           [['今天收到', s.received, '📥'], ['今天发出', s.sent, '📤'], ['语音条', s.voice, '🎙️'], ['表情包', s.stickers, '😺']].map(([l, n, ic]) => h('div', { key: l, className: 'ab-card ab-stat' }, h('span', { className: 'ic', 'aria-hidden': true }, ic), h('div', { className: 'n' }, n || 0), h('div', { className: 'l' }, l))),
         ),
@@ -1040,6 +1040,164 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
         h(Row, { label: 'HTTP 令牌' }, f.text('snowluma.httpToken', { type: 'password', placeholder: draft.snowluma.httpTokenSet ? '已保存' : '没有就留空' })))
     }
 
+    /** 腾讯官方 QQBot（QQ 开放平台）连接与扫码绑定卡片。 */
+    function QQBotCard({ toast, reload }) {
+      const [status, setStatus] = useState(null)
+      const [loaded, setLoaded] = useState(false)
+      const [form, setForm] = useState({
+        enabled: false,
+        appId: '',
+        appSecret: '',
+        ownerOpenid: '',
+        requireMentionInGroup: true,
+        nonMentionReplyMode: 'always',
+        markdownSupport: false,
+      })
+      const inited = useRef(false)
+      const prevPhase = useRef('idle')
+
+      const syncFormFrom = (s) => {
+        if (!s) return
+        setForm({
+          enabled: !!s.enabled,
+          appId: s.appId || '',
+          appSecret: '',
+          ownerOpenid: s.ownerOpenid || '',
+          requireMentionInGroup: s.requireMentionInGroup !== false,
+          nonMentionReplyMode: s.nonMentionReplyMode === 'aurabot' ? 'aurabot' : 'always',
+          markdownSupport: !!s.markdownSupport,
+        })
+      }
+
+      const loadStatus = useCallback(async (forceSyncForm = false) => {
+        const r = await get('/qqbot/status')
+        setStatus(r)
+        setLoaded(true)
+        if (r && r.ok && r.settings) {
+          const curPhase = (r.qrBind && r.qrBind.phase) || 'idle'
+          const justBound = prevPhase.current !== 'bound' && curPhase === 'bound'
+          prevPhase.current = curPhase
+          if (!inited.current || forceSyncForm || justBound) {
+            inited.current = true
+            syncFormFrom(r.settings)
+            if (justBound) reload && reload()
+          }
+        }
+        return r
+      }, [reload])
+
+      useEffect(() => {
+        let alive = true
+        const tick = () => { if (alive) loadStatus(false) }
+        tick()
+        const timer = setInterval(tick, 3000)
+        return () => { alive = false; clearInterval(timer) }
+      }, [loadStatus])
+
+      const title = '官方 QQBot（QQ 开放平台）'
+      const desc = '腾讯官方机器人，不需要 SnowLuma / NapCat，也不需要公网 IP。可以单独用，也可以和上面的 QQ 网关同时在线（同一个群里两个号各回各的）。'
+
+      if (!loaded) {
+        return h(Card, { title, desc }, h('div', { className: 'ab-muted ab-small' }, '正在读取官方 QQBot 状态…'))
+      }
+      if (!status || !status.ok) {
+        return h(Card, { title, desc }, h('div', { className: 'ab-note warn' }, '官方 QQBot 模块没加载（去「模块」页看看是否被关掉）'))
+      }
+
+      const qr = status.qrBind || { phase: 'idle' }
+      const stateText = { connected: '在线', connecting: '连接中', stopped: '没连接' }[status.state] || status.state
+      const dotCls = status.state === 'connected' ? 'ok' : status.state === 'connecting' ? 'warn' : 'err'
+      const secretSet = Boolean(status.settings && status.settings.appSecretSet)
+
+      const runAct = (fn, syncAfter = false) => async () => {
+        const r = await fn()
+        toast((r && r.message) || (r && r.ok ? '操作成功' : '没成功'), r && r.ok === false ? 'err' : 'ok')
+        await loadStatus(syncAfter)
+        reload && reload()
+      }
+
+      return h(Card, { title, desc },
+        status.dshPlugin && status.dshPlugin.coexistingActivePlugin
+          ? h('div', { className: 'ab-note warn', style: { marginBottom: 10 } },
+              '检测到当前 DSH Profile（' + status.dshPlugin.profileName + '）同时启用了原版 @tencent-connect/dsh-qqbot 插件且使用同一 AppID（' + status.dshPlugin.appId + '）。建议在 DSH 左侧「插件」里关掉原版 dsh-qqbot，免得一条消息被回两次。')
+          : null,
+        h('div', { className: 'ab-kv', style: { marginBottom: 10 } },
+          h('span', null, '运行状态'),
+          h('span', null, h('span', { className: 'ab-flex' },
+            h('i', { className: cx('ab-dot', dotCls) }),
+            stateText + (status.rawAppId ? ' · AppID ' + status.rawAppId : ''),
+          )),
+          h('span', null, '协议引擎'), h('span', null, status.engine || '—'),
+          h('span', null, '收发统计'), h('span', null, '收到 ' + ((status.counters && status.counters.inbound) || 0) + ' 条 · 发出 ' + ((status.counters && status.counters.outbound) || 0) + ' 条 · 错误 ' + ((status.counters && status.counters.errors) || 0) + ' 次'),
+        ),
+        status.lastError ? h('div', { className: 'ab-note err', style: { marginBottom: 10 } }, '最近错误：' + status.lastError) : null,
+
+        h(Row, { label: '启用官方 QQBot', hint: '开启后通过腾讯官方 WebSocket 网关收发私聊与群聊（同时需打开右上角总开关）' },
+          h(Switch, { on: !!form.enabled, onChange: (v) => setForm({ ...form, enabled: v }) })),
+        h(Row, { label: 'AppID', hint: '也可点下方「手机 QQ 扫码绑定」自动填入，或通过环境变量 QQBOT_APPID 提供' },
+          h('input', { className: 'ab-input', value: form.appId, placeholder: '例如 102xxxxxx', onChange: (e) => setForm({ ...form, appId: e.target.value }) })),
+        h(Row, { label: 'AppSecret', hint: '留空不会覆盖已保存的密钥' },
+          h('input', { className: 'ab-input', type: 'password', value: form.appSecret, placeholder: secretSet ? '已保存，不改就留空' : '填写 AppSecret 或扫码绑定', onChange: (e) => setForm({ ...form, appSecret: e.target.value }) })),
+        h(Row, { label: '主人 User OpenID', hint: '扫码绑定会自动填入；匹配此 OpenID 的私聊与群内发言拥有主人权限' },
+          h('input', { className: 'ab-input wide', value: form.ownerOpenid, placeholder: '扫码自动获取，或粘贴你的 User OpenID', onChange: (e) => setForm({ ...form, ownerOpenid: e.target.value }) })),
+        h(Row, { label: '群聊必须 @ 才回', hint: '关掉后可响应不带 @ 的群消息（需群内开启机器人「获取群内全部消息」）' },
+          h(Switch, { on: !!form.requireMentionInGroup, onChange: (v) => setForm({ ...form, requireMentionInGroup: v }) })),
+        h(Row, { label: '免 @ 回复策略' },
+          h(Select, {
+            value: form.nonMentionReplyMode,
+            width: 300,
+            onChange: (v) => setForm({ ...form, nonMentionReplyMode: v }),
+            options: [
+              { value: 'always', label: '每条普通消息都直接回（不用 @ 也不用叫名字）' },
+              { value: 'aurabot', label: '按大肥鱼群聊策略（叫名字必回，其余按概率插话）' },
+            ],
+          })),
+        h(Row, { label: 'Markdown 格式', hint: '仅在官方机器人具备 Markdown 权限时开启；无权限会自动降级为纯文本' },
+          h(Switch, { on: !!form.markdownSupport, onChange: (v) => setForm({ ...form, markdownSupport: v }) })),
+
+        h('div', { className: 'ab-flex', style: { marginTop: 10, gap: 8, flexWrap: 'wrap' } },
+          h(Btn, { kind: 'primary', small: true, onClick: async () => {
+            const r = await post('/qqbot/save', form)
+            toast((r && r.message) || (r && r.ok ? '已保存' : '保存失败'), r && r.ok === false ? 'err' : 'ok')
+            if (r && r.ok) setForm((prev) => ({ ...prev, appSecret: '' }))
+            await loadStatus(false)
+            reload && reload()
+          } }, '保存'),
+          h(Btn, { small: true, onClick: runAct(() => post('/qqbot/qr/start'), false) }, '📱 手机 QQ 扫码绑定'),
+          status.dshPlugin && status.dshPlugin.found
+            ? h(Btn, { small: true, onClick: runAct(() => post('/qqbot/import-dsh-qqbot'), true) }, '一键导入 dsh-qqbot 凭据')
+            : null,
+          status.hasCredentials
+            ? h(Btn, { small: true, onClick: runAct(() => post('/qqbot/reconnect'), true) }, '重新连接')
+            : null,
+          status.hasCredentials
+            ? h(Btn, { small: true, kind: 'danger', onClick: runAct(() => post('/qqbot/unbind'), true) }, '解绑')
+            : null,
+          h(Btn, { small: true, onClick: runAct(() => post('/qqbot/test-send', {}), false) }, '发测试消息给主人'),
+        ),
+
+        qr.phase && qr.phase !== 'idle' && qr.phase !== 'bound'
+          ? h('div', { style: { marginTop: 14, padding: 14, borderRadius: 10, border: '1px solid var(--ab-line-2)', textAlign: 'center' } },
+              qr.phase === 'starting' ? h('div', { className: 'ab-muted ab-small' }, '正在向腾讯开放平台申请绑定二维码…') : null,
+              qr.qrSvg
+                ? h('img', { src: qr.qrSvg, alt: '手机 QQ 扫码绑定', style: { width: 200, height: 200, background: '#fff', padding: 8, borderRadius: 8 } })
+                : null,
+              qr.url
+                ? h('div', { className: 'ab-small', style: { marginTop: 8 } },
+                    '请用手机 QQ 扫描二维码，或在浏览器打开：',
+                    h('a', { href: qr.url, target: '_blank', rel: 'noreferrer', style: { marginLeft: 4, wordBreak: 'break-all' } }, qr.url))
+                : null,
+              qr.error ? h('div', { className: 'ab-note err', style: { marginTop: 8, textAlign: 'left' } }, qr.error) : null,
+              h('div', { className: 'ab-flex', style: { marginTop: 10, justifyContent: 'center', gap: 8 } },
+                h(Btn, { small: true, onClick: runAct(() => post('/qqbot/qr/refresh'), false) }, '刷新二维码'),
+                h(Btn, { small: true, onClick: runAct(() => post('/qqbot/qr/cancel'), false) }, '取消')))
+          : null,
+
+        h('div', { className: 'ab-muted ab-small', style: { marginTop: 10 } },
+          '提示：群里不 @ 也要回，得在手机 QQ 群机器人设置里打开「获取群内全部消息」；被动回复 60 分钟内有效，每条消息最多回 5 次。'),
+      )
+    }
+
     function Connect({ st, draft, setDraft, toast, reload, openWizard }) {
       const f = useField(draft, setDraft)
       const sl = st.snowluma
@@ -1095,6 +1253,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
                 h('td', null, p.injected ? (p.connected ? '已接入' : '已注入，连接中') : '未接入'),
                 h('td', null, p.isBot ? h('span', { className: 'ab-badge' }, '机器人号') : h('span', { className: 'ab-muted ab-small' }, '不会碰'))))))) : null,
         ),
+        h(QQBotCard, { toast, reload }),
         h(Card, { title: 'QQ 会话放在哪', desc: '每个 QQ 私聊 / 群都是 DSH 里「Aurabot · QQ」工作区下的一个会话，ta在会话里读写文件也在这个文件夹。改了以后新开的会话放到新位置；已有的会话还在原来的地方，想全部挪过去就在「概览」点「重新开始所有 QQ 会话」。' },
           h(Row, { label: '工作区文件夹', hint: '填完整路径（比如 D:\\Aurabot\\qq-chats）；留空 = 默认位置' }, f.text('workspaceDir', { size: 'wide', placeholder: st.workspaceDir || '' })),
           h('div', { className: 'ab-muted ab-small' }, '现在用的：' + (st.workspaceDir || '—') + (st.workspaceReal && st.workspaceReal !== st.workspaceDir ? '（文件实际在 ' + st.workspaceReal + '）' : '')),
@@ -1112,6 +1271,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
             h('span', null, '登录的号'), h('span', null, login ? login.nickname + '（' + login.uin + '）' + (login.uin !== draft.botQQ ? ' ⚠ 不是机器人号！' : '') : '—'),
             h('span', null, 'HTTP'), h('span', null, st.onebot.endpoint.httpUrl || '—'),
             h('span', null, 'WebSocket'), h('span', null, st.onebot.endpoint.wsUrl || '—'),
+            h('span', null, '官方 QQBot'), h('span', null, st.qqbot ? ({ connected: '在线', connecting: '连接中', stopped: st.qqbot.enabled ? '没连接' : '未启用' }[st.qqbot.state] || st.qqbot.state) + (st.qqbot.appId ? '（' + st.qqbot.appId + '）' : '') : '—'),
           ),
           !conn && st.onebot.problem ? h('div', { className: 'ab-note warn', style: { marginTop: 10 } }, st.onebot.problem) : null,
           h('div', { className: 'ab-flex', style: { marginTop: 10 } }, h(Btn, { small: true, onClick: async () => { const r = await post('/onebot/reconnect'); toast(r.message, r.ok ? 'ok' : 'err'); reload() } }, '重新连接')),

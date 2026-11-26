@@ -720,6 +720,7 @@ export function apply(ctx) {
       config: publicConfig(cfg),
       onebot: { state: onebotState, login, endpoint: { httpUrl: endpoint().httpUrl, wsUrl: endpoint().wsUrl }, problem: onebotState === 'connected' && loginOk ? '' : await connectionProblem() },
       snowluma: { ...inst, running, consented: await consented(running), owns: snowluma.ownsProcess, lastAttach: snowluma.lastAttach, downloadPage: DOWNLOAD_PAGE, webui: snowluma.webuiUrl() },
+      qqbot: use('qqbot')?.summary?.() ?? null,
       stats: hub.stats(),
       // 模块关着时给个空壳，面板照常显示
       mood: use('mood')?.state?.() ?? { value: 0, label: '心情模块关着', reason: '', history: [] },
