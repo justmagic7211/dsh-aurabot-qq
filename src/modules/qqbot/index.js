@@ -927,7 +927,7 @@ export default {
       }
     }
 
-    // 扫码绑定流程（对接 @tencent-connect/qqbot-connector）
+    // 扫码绑定流程（优先复用官方 connector，未安装时自动走内置零依赖扫码协议与 SVG 二维码编码）
     async function startQrBindFlow() {
       const connector = await loadOfficialQrConnector()
       if (!connector || typeof connector.startQrConnect !== 'function') {
@@ -935,7 +935,7 @@ export default {
           phase: 'failed',
           url: '',
           qrSvg: '',
-          error: '未检测到 @tencent-connect/qqbot-connector。请在 modules/qqbot 目录执行 npm install，或在 DSH 中安装 @tencent-connect/dsh-qqbot@latest。',
+          error: '扫码连接器初始化失败',
           issuedAt: Date.now(),
         }
         return { ok: false, message: qrBindState.error }

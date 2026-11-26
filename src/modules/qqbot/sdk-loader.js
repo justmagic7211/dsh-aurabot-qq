@@ -7,6 +7,7 @@ import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
+import { startLiteQrConnect, renderLiteQrSvgDataUrl } from './qr.js'
 
 function dshProfileDirs() {
   const home = process.env.DSH_HOME || resolve(homedir(), '.dsh')
@@ -92,8 +93,9 @@ export async function loadOfficialQrConnector() {
       } catch {}
     }
   }
-  cachedConnector = null
-  return null
+  // 零依赖回退到内置扫码绑定实现
+  cachedConnector = { startQrConnect: startLiteQrConnect, builtin: true }
+  return cachedConnector
 }
 
 let cachedQrLib = undefined
@@ -120,14 +122,19 @@ function loadQrcodeLib() {
 
 export async function renderQrSvgDataUrl(url) {
   const qr = loadQrcodeLib()
-  if (!qr || typeof qr.toString !== 'function') return ''
+  if (qr && typeof qr.toString === 'function') {
+    try {
+      const svg = await qr.toString(url, { type: 'svg', margin: 1, width: 240 })
+      if (typeof svg === 'string' && svg.trimStart().startsWith('<svg')) {
+        return `data:image/svg+xml;base64,${Buffer.from(svg, 'utf8').toString('base64')}`
+      }
+    } catch {}
+  }
   try {
-    const svg = await qr.toString(url, { type: 'svg', margin: 1, width: 240 })
-    if (typeof svg === 'string' && svg.trimStart().startsWith('<svg')) {
-      return `data:image/svg+xml;base64,${Buffer.from(svg, 'utf8').toString('base64')}`
-    }
-  } catch {}
-  return ''
+    return renderLiteQrSvgDataUrl(url)
+  } catch {
+    return ''
+  }
 }
 
 /**

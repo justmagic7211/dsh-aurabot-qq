@@ -9,6 +9,7 @@ import { checkAllowed, isOwner } from '../src/chat/access.js'
 import { acquirePlatformRouter, createVirtualIdMapper, createRuntimeAllowSync } from '../src/modules/qqbot/router.js'
 import { parseImQqbotFromPatchYaml } from '../src/modules/qqbot/sdk-loader.js'
 import { LiteQQBot, createPassiveReplyTracker } from '../src/modules/qqbot/lite.js'
+import { BindStatus, decryptBindSecret, encodeQrMatrix, renderLiteQrSvgDataUrl, startLiteQrConnect } from '../src/modules/qqbot/qr.js'
 import qqbotModule from '../src/modules/qqbot/index.js'
 
 test('parseImQqbotFromPatchYaml: 解析 @tencent-connect/dsh-qqbot 的 cordis.patch.yml 凭据与白名单', () => {
@@ -354,5 +355,73 @@ test('内置接线契约：BUILTINS 含 qqbot，面板「连接」页含 QQBotCa
   assert.ok(clientSrc.includes("{ value: 'qqbot', label: '用腾讯官方 QQBot"), 'GatewayChoice 应包含官方 QQBot 选项')
   assert.ok(clientSrc.includes("const isQqbot = draft.gateway === 'qqbot'"), 'Wizard 与 Connect 应处理 gateway=qqbot 分支')
   assert.ok(hostSrc.includes("if (cfg.gateway === 'qqbot')"), 'host.js 应支持官方 QQBot 独立完成首次使用向导')
+})
+
+test('零依赖内置扫码绑定协议与 SVG 二维码编码：过期自动刷新 + AES-256-GCM 解密凭据', async () => {
+  const { createCipheriv, randomBytes } = await import('node:crypto')
+
+  const svgDataUrl = renderLiteQrSvgDataUrl('https://q.qq.com/qqbot/openclaw/connect.html?task_id=task_abc_123456&source=dsh-qqbot&_wv=2')
+  assert.ok(svgDataUrl.startsWith('data:image/svg+xml;base64,'))
+  const svgXml = Buffer.from(svgDataUrl.slice('data:image/svg+xml;base64,'.length), 'base64').toString('utf8')
+  assert.ok(svgXml.startsWith('<svg ') && svgXml.includes('<path d="M'))
+  const matrix = encodeQrMatrix('https://q.qq.com/qqbot/openclaw/connect.html?task_id=task_abc_123456&source=dsh-qqbot&_wv=2')
+  assert.ok(matrix.length >= 37 && matrix.length <= 57)
+
+  // 模拟服务端：第 1 个 task 过期 → 自动刷新创建第 2 个 task → 扫码完成并用绑定的 AES-256-GCM key 加密返回 appSecret
+  let taskSeq = 0
+  const keyByTask = new Map()
+  const encryptSecret = (plainText, keyB64) => {
+    const key = Buffer.from(keyB64, 'base64')
+    const iv = randomBytes(12)
+    const cipher = createCipheriv('aes-256-gcm', key, iv)
+    const enc = Buffer.concat([cipher.update(plainText, 'utf8'), cipher.final()])
+    const tag = cipher.getAuthTag()
+    return Buffer.concat([iv, enc, tag]).toString('base64')
+  }
+
+  const fakeFetch = async (url, init = {}) => {
+    const u = String(url)
+    const body = JSON.parse(init.body || '{}')
+    if (u.endsWith('/lite/create_bind_task')) {
+      const id = `TASK_${++taskSeq}`
+      keyByTask.set(id, body.key)
+      return new Response(JSON.stringify({ retcode: 0, data: { task_id: id } }), { status: 200 })
+    }
+    if (u.endsWith('/lite/poll_bind_result')) {
+      if (body.task_id === 'TASK_1') {
+        return new Response(JSON.stringify({ retcode: 0, data: { status: BindStatus.EXPIRED } }), { status: 200 })
+      }
+      const k = keyByTask.get(body.task_id)
+      return new Response(JSON.stringify({
+        retcode: 0,
+        data: {
+          status: BindStatus.COMPLETED,
+          bot_appid: '102998877',
+          bot_encrypt_secret: encryptSecret('REAL_BOT_SECRET_XYZ', k),
+          user_openid: 'USER_OPENID_SCANNER',
+        },
+      }), { status: 200 })
+    }
+    return new Response('{}', { status: 404 })
+  }
+
+  const displayedUrls = []
+  let expiredCount = 0
+  const creds = await new Promise((resolve, reject) => {
+    startLiteQrConnect({
+      onQrDisplayed: (u) => displayedUrls.push(u),
+      onQrExpired: () => { expiredCount++ },
+      onSuccess: (res) => resolve(res),
+      onFailure: (err) => reject(err),
+    }, { fetchImpl: fakeFetch, pollIntervalMs: 10 })
+  })
+
+  assert.equal(expiredCount, 1)
+  assert.equal(displayedUrls.length, 2)
+  assert.ok(displayedUrls[1].includes('task_id=TASK_2'))
+  assert.equal(creds[0].appId, '102998877')
+  assert.equal(creds[0].appSecret, 'REAL_BOT_SECRET_XYZ')
+  assert.equal(creds[0].userOpenid, 'USER_OPENID_SCANNER')
+  assert.equal(decryptBindSecret(encryptSecret('hello_secret', keyByTask.get('TASK_2')), keyByTask.get('TASK_2')), 'hello_secret')
 })
 
